@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   Modal,
+  Platform,
   ScrollView,
+  StatusBar as RNStatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -9,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 interface NexusNode {
   id: string;
@@ -84,7 +85,7 @@ function extractLinks(text: string): string[] {
   return Array.from(new Set(matches));
 }
 
-function NexusAppContent() {
+export default function App() {
   const [nodes, setNodes] = useState<NexusNode[]>(INITIAL_NODES);
   const [activeTab, setActiveTab] = useState<'spaces' | 'search'>('spaces');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -239,7 +240,6 @@ function NexusAppContent() {
     );
   }, [nodes, searchQuery]);
 
-  // Tela de Página Completa (Estilo Notion + Obsidian)
   if (selectedNode) {
     const breadcrumbs = getBreadcrumbs(selectedNode);
     const subpages = nodes.filter((n) => n.parentId === selectedNode.id);
@@ -248,7 +248,7 @@ function NexusAppContent() {
     const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
 
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <StatusBar style="light" />
         <View style={styles.pageHeader}>
           <TouchableOpacity
@@ -298,7 +298,6 @@ function NexusAppContent() {
             placeholderTextColor="#64748B"
           />
 
-          {/* Subpáginas */}
           <View style={styles.sectionBox}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionLabel}>Subtópicos ({subpages.length})</Text>
@@ -321,7 +320,6 @@ function NexusAppContent() {
             )}
           </View>
 
-          {/* Tags & Links */}
           {(tags.length > 0 || links.length > 0) && (
             <View style={styles.sectionBox}>
               <Text style={styles.sectionLabel}>Conexões e Tags</Text>
@@ -344,7 +342,6 @@ function NexusAppContent() {
             </View>
           )}
 
-          {/* Backlinks */}
           <View style={styles.sectionBox}>
             <Text style={styles.sectionLabel}>
               Backlinks ({backlinks.length})
@@ -366,15 +363,14 @@ function NexusAppContent() {
             )}
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.brand}>NEXUS</Text>
@@ -423,7 +419,6 @@ function NexusAppContent() {
         </View>
       )}
 
-      {/* Barra Inferior */}
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.tabBtn}
@@ -454,7 +449,6 @@ function NexusAppContent() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal Novo Tópico */}
       <Modal
         visible={newTopicModalVisible}
         transparent
@@ -488,15 +482,7 @@ function NexusAppContent() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
-  );
-}
-
-export default function App() {
-  return (
-    <SafeAreaProvider>
-      <NexusAppContent />
-    </SafeAreaProvider>
+    </View>
   );
 }
 
@@ -504,6 +490,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0B0F17',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 28) : 0,
+    paddingBottom: 12,
   },
   header: {
     flexDirection: 'row',
