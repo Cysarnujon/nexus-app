@@ -26,19 +26,23 @@ import {
   updateNodeContent,
   updateNodeParent,
 } from './src/database/db';
+import BlockEditor from './src/components/BlockEditor';
+import { extractPlainTextFromContent } from './src/editor/blocks';
 
 type MainTab = 'spaces' | 'favorites' | 'search';
 
-function extractTags(text: string): string[] {
-  const matches = text.match(/#[a-zA-Z0-9_À-ÿ]+/g) || [];
+function extractTags(rawContent: string): string[] {
+  const plain = extractPlainTextFromContent(rawContent);
+  const matches = plain.match(/#[a-zA-Z0-9_À-ÿ]+/g) || [];
   return Array.from(new Set(matches));
 }
 
-function extractLinks(text: string): string[] {
+function extractLinks(rawContent: string): string[] {
+  const plain = extractPlainTextFromContent(rawContent);
   const matches: string[] = [];
   const regex = /\[\[(.*?)\]\]/g;
   let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
+  while ((match = regex.exec(plain)) !== null) {
     if (match[1].trim()) {
       matches.push(match[1].trim());
     }
@@ -74,15 +78,11 @@ export default function App() {
   const [pageHistory, setPageHistory] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal de criação
   const [newTopicModalVisible, setNewTopicModalVisible] = useState(false);
   const [newTopicParentId, setNewTopicParentId] = useState<string | null>(null);
   const [newTopicTitle, setNewTopicTitle] = useState('');
 
-  // Modal de opções (⋯)
   const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
-
-  // Modal de mover tópico
   const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -112,7 +112,6 @@ export default function App() {
     [nodes, moveNodeId]
   );
 
-  // Botão físico/gesto Voltar do Android
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (moveNodeId) {
@@ -189,7 +188,7 @@ export default function App() {
       parentId: newTopicParentId,
       title: trimmed,
       content:
-        'Escreva suas ideias aqui...\n\nUse #tags ou [[Nome de outra nota]] para conectar.',
+        'Escreva suas ideias aqui...\n- [ ] Primeira tarefa\n#nova',
       isExpanded: true,
       isFavorite: false,
     });
@@ -336,7 +335,7 @@ export default function App() {
         id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         parentId: null,
         title,
-        content: 'Página criada automaticamente a partir de um link.\n\n#nova',
+        content: 'Página criada automaticamente a partir de um link.\n#nova',
         isExpanded: false,
         isFavorite: false,
       });
@@ -410,10 +409,10 @@ export default function App() {
   const filteredSearchNodes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return nodes;
-    return nodes.filter(
-      (n) =>
-        n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q)
-    );
+    return nodes.filter((n) => {
+      const plain = extractPlainTextFromContent(n.content).toLowerCase();
+      return n.title.toLowerCase().includes(q) || plain.includes(q);
+    });
   }, [nodes, searchQuery]);
 
   const invalidMoveTargets = useMemo(() => {
@@ -421,165 +420,9 @@ export default function App() {
     return new Set(getDescendantIds(nodes, moveNode.id));
   }, [nodes, moveNode]);
 
-  // Tela de Página Completa
-  if (selectedNode) {
-    const breadcrumbs = getBreadcrumbs(selectedNode);
-    const subpages = nodes
-      .filter((n) => n.parentId === selectedNode.id)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-    const tags = extractTags(selectedNode.content);
-    const links = extractLinks(selectedNode.content);
-    const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
-
-    return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
-
-        <View style={styles.pageHeader}>
-          <View style={styles.pageHeaderLeft}>
-            <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
-              <Text style={styles.backBtnText}>← Voltar</Text>
-            </TouchableOpacity>
-            {pageHistory.length > 1 && (
-              <TouchableOpacity onPress={goHome} style={styles.homeChip}>
-                <Text style={styles.homeChipText}>Início</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.pageHeaderRight}>
-            <Text style={styles.savedBadge}>
-              Salvo ✓ {formatTime(selectedNode.updatedAt)}
-            </Text>
-            <TouchableOpacity
-              onPress={() => toggleFavorite(selectedNode.id)}
-              style={styles.favBtn}
-            >
-              <Text style={styles.favBtnText}>
-                {selectedNode.isFavorite ? '★' : '☆'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setMenuNodeId(selectedNode.id)}
-              style={styles.favBtn}
-            >
-              <Text style={styles.menuDotsText}>⋯</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.breadcrumbRow}>
-            {breadcrumbs.map((crumb, idx) => (
-              <View key={crumb.id} style={styles.breadcrumbItem}>
-                {idx > 0 && <Text style={styles.breadcrumbSep}> › </Text>}
-                <TouchableOpacity onPress={() => openPage(crumb.id)}>
-                  <Text style={styles.breadcrumbText}>{crumb.title}</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-
-          <TextInput
-            style={styles.pageTitleInput}
-            value={selectedNode.title}
-            onChangeText={(text) =>
-              handleEditPage(selectedNode.id, text, selectedNode.content)
-            }
-            placeholder="Título da página"
-            placeholderTextColor="#64748B"
-          />
-
-          <TextInput
-            style={styles.pageContentInput}
-            value={selectedNode.content}
-            onChangeText={(text) =>
-              handleEditPage(selectedNode.id, selectedNode.title, text)
-            }
-            multiline
-            textAlignVertical="top"
-            placeholder="Comece a escrever... Use #tags ou [[Links]]"
-            placeholderTextColor="#64748B"
-          />
-
-          <View style={styles.sectionBox}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionLabel}>
-                Subtópicos ({subpages.length})
-              </Text>
-              <TouchableOpacity onPress={() => openCreateModal(selectedNode.id)}>
-                <Text style={styles.sectionAction}>+ Novo subtópico</Text>
-              </TouchableOpacity>
-            </View>
-            {subpages.length === 0 ? (
-              <Text style={styles.emptyHint}>Nenhum subtópico ainda.</Text>
-            ) : (
-              subpages.map((sub) => (
-                <TouchableOpacity
-                  key={sub.id}
-                  style={styles.subpageCard}
-                  onPress={() => openPage(sub.id)}
-                >
-                  <Text style={styles.subpageTitle}>📄 {sub.title}</Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-
-          {(tags.length > 0 || links.length > 0) && (
-            <View style={styles.sectionBox}>
-              <Text style={styles.sectionLabel}>Conexões e Tags</Text>
-              <View style={styles.chipsWrap}>
-                {tags.map((tag) => (
-                  <View key={tag} style={styles.tagChip}>
-                    <Text style={styles.tagChipText}>{tag}</Text>
-                  </View>
-                ))}
-                {links.map((link) => (
-                  <TouchableOpacity
-                    key={link}
-                    style={styles.linkChip}
-                    onPress={() => openLinkedNoteByTitle(link)}
-                  >
-                    <Text style={styles.linkChipText}>[[{link}]]</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <View style={styles.sectionBox}>
-            <Text style={styles.sectionLabel}>
-              Backlinks ({backlinks.length})
-            </Text>
-            {backlinks.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
-              </Text>
-            ) : (
-              backlinks.map((bl) => (
-                <TouchableOpacity
-                  key={bl.id}
-                  style={styles.subpageCard}
-                  onPress={() => openPage(bl.id)}
-                >
-                  <Text style={styles.subpageTitle}>🔗 {bl.title}</Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        </ScrollView>
-
-        {/* Modais compartilhados */}
-        {renderModals()}
-      </View>
-    );
-  }
-
   function renderModals() {
     return (
       <>
-        {/* Modal Novo Tópico */}
         <Modal
           visible={newTopicModalVisible}
           transparent
@@ -617,7 +460,6 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* Modal Menu de Opções (⋯) */}
         <Modal
           visible={!!menuNode}
           transparent
@@ -719,7 +561,6 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* Modal Mover Tópico */}
         <Modal
           visible={!!moveNode}
           transparent
@@ -767,6 +608,156 @@ export default function App() {
     );
   }
 
+  if (selectedNode) {
+    const breadcrumbs = getBreadcrumbs(selectedNode);
+    const subpages = nodes
+      .filter((n) => n.parentId === selectedNode.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const tags = extractTags(selectedNode.content);
+    const links = extractLinks(selectedNode.content);
+    const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+
+        <View style={styles.pageHeader}>
+          <View style={styles.pageHeaderLeft}>
+            <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>← Voltar</Text>
+            </TouchableOpacity>
+            {pageHistory.length > 1 && (
+              <TouchableOpacity onPress={goHome} style={styles.homeChip}>
+                <Text style={styles.homeChipText}>Início</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.pageHeaderRight}>
+            <Text style={styles.savedBadge}>
+              Salvo ✓ {formatTime(selectedNode.updatedAt)}
+            </Text>
+            <TouchableOpacity
+              onPress={() => toggleFavorite(selectedNode.id)}
+              style={styles.favBtn}
+            >
+              <Text style={styles.favBtnText}>
+                {selectedNode.isFavorite ? '★' : '☆'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuNodeId(selectedNode.id)}
+              style={styles.favBtn}
+            >
+              <Text style={styles.menuDotsText}>⋯</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
+          <View style={styles.breadcrumbRow}>
+            {breadcrumbs.map((crumb, idx) => (
+              <View key={crumb.id} style={styles.breadcrumbItem}>
+                {idx > 0 && <Text style={styles.breadcrumbSep}> › </Text>}
+                <TouchableOpacity onPress={() => openPage(crumb.id)}>
+                  <Text style={styles.breadcrumbText}>{crumb.title}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+
+          <TextInput
+            style={styles.pageTitleInput}
+            value={selectedNode.title}
+            onChangeText={(text) =>
+              handleEditPage(selectedNode.id, text, selectedNode.content)
+            }
+            placeholder="Título da página"
+            placeholderTextColor="#64748B"
+          />
+
+          <BlockEditor
+            noteId={selectedNode.id}
+            rawContent={selectedNode.content}
+            onChangeSerialized={(serialized) =>
+              handleEditPage(selectedNode.id, selectedNode.title, serialized)
+            }
+            onPressInternalLink={openLinkedNoteByTitle}
+          />
+
+          <View style={styles.sectionBox}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionLabel}>
+                Subtópicos ({subpages.length})
+              </Text>
+              <TouchableOpacity onPress={() => openCreateModal(selectedNode.id)}>
+                <Text style={styles.sectionAction}>+ Novo subtópico</Text>
+              </TouchableOpacity>
+            </View>
+            {subpages.length === 0 ? (
+              <Text style={styles.emptyHint}>Nenhum subtópico ainda.</Text>
+            ) : (
+              subpages.map((sub) => (
+                <TouchableOpacity
+                  key={sub.id}
+                  style={styles.subpageCard}
+                  onPress={() => openPage(sub.id)}
+                >
+                  <Text style={styles.subpageTitle}>📄 {sub.title}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+
+          {(tags.length > 0 || links.length > 0) && (
+            <View style={styles.sectionBox}>
+              <Text style={styles.sectionLabel}>Conexões e Tags</Text>
+              <View style={styles.chipsWrap}>
+                {tags.map((tag) => (
+                  <View key={tag} style={styles.tagChip}>
+                    <Text style={styles.tagChipText}>{tag}</Text>
+                  </View>
+                ))}
+                {links.map((link) => (
+                  <TouchableOpacity
+                    key={link}
+                    style={styles.linkChip}
+                    onPress={() => openLinkedNoteByTitle(link)}
+                  >
+                    <Text style={styles.linkChipText}>[[{link}]]</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={[styles.sectionBox, { marginBottom: 32 }]}>
+            <Text style={styles.sectionLabel}>
+              Backlinks ({backlinks.length})
+            </Text>
+            {backlinks.length === 0 ? (
+              <Text style={styles.emptyHint}>
+                Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
+              </Text>
+            ) : (
+              backlinks.map((bl) => (
+                <TouchableOpacity
+                  key={bl.id}
+                  style={styles.subpageCard}
+                  onPress={() => openPage(bl.id)}
+                >
+                  <Text style={styles.subpageTitle}>🔗 {bl.title}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        </ScrollView>
+
+        {renderModals()}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -775,7 +766,7 @@ export default function App() {
         <View>
           <Text style={styles.brand}>NEXUS</Text>
           <Text style={styles.subtitle}>
-            v0.2 • SQLite Offline ({nodes.length} notas)
+            v0.3 • Editor de Blocos ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -809,7 +800,7 @@ export default function App() {
             <View style={styles.treeCard}>{renderTree(null, 0)}</View>
           )}
           <Text style={styles.tipText}>
-            Tudo salvo automaticamente no seu celular. Toque em (⋯) para reordenar, mover ou excluir.
+            Tudo salvo automaticamente no seu celular. Toque em qualquer tópico para abrir o Editor de Blocos.
           </Text>
         </ScrollView>
       )}
@@ -864,7 +855,7 @@ export default function App() {
               >
                 <Text style={styles.searchResultTitle}>{node.title}</Text>
                 <Text style={styles.searchResultSnippet} numberOfLines={2}>
-                  {node.content}
+                  {extractPlainTextFromContent(node.content)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -1138,7 +1129,7 @@ const styles = StyleSheet.create({
   },
   pageScroll: {
     flex: 1,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingTop: 12,
   },
   breadcrumbRow: {
@@ -1159,25 +1150,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   pageTitleInput: {
-    fontSize: 26,
+    fontSize: 25,
     fontWeight: '800',
     color: '#F8FAFC',
-    marginBottom: 14,
-  },
-  pageContentInput: {
-    minHeight: 180,
-    fontSize: 15,
-    lineHeight: 23,
-    color: '#CBD5E1',
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1E293B',
-    padding: 14,
-    marginBottom: 18,
+    marginBottom: 10,
   },
   sectionBox: {
-    marginBottom: 20,
+    marginBottom: 16,
     backgroundColor: '#111827',
     borderRadius: 12,
     borderWidth: 1,
