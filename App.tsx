@@ -62,6 +62,7 @@ import HomeSearchView, {
 } from './src/components/HomeSearchView';
 import InAppBrowser from './src/components/InAppBrowser';
 import CoursesView from './src/components/CoursesView';
+import ProductivityHubView from './src/components/ProductivityHubView';
 import {
   DARK_THEME,
   DEFAULT_EDITOR_PREFS,
@@ -158,6 +159,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MainTab>('home');
   const [pageHistory, setPageHistory] = useState<string[]>([]);
   const [showCoursesView, setShowCoursesView] = useState(false);
+  const [showProductivityHub, setShowProductivityHub] = useState(false);
   const [initialCourseId, setInitialCourseId] = useState<string | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
 
@@ -289,7 +291,7 @@ export default function App() {
         setNewTopicModalVisible(false);
         return true;
       }
-      if (showCoursesView) {
+      if (showCoursesView || showProductivityHub) {
         return false;
       }
       if (isZenMode) {
@@ -312,6 +314,7 @@ export default function App() {
     browserSession,
     drawerVisible,
     showCoursesView,
+    showProductivityHub,
     backupModalVisible,
     historyModalNodeId,
     moveNodeId,
@@ -466,7 +469,25 @@ export default function App() {
     );
   };
 
-  // Handlers de Meus Cursos
+  const handleExportProductivityToSpaces = (
+    title: string,
+    serializedContent: string
+  ) => {
+    const created = insertNode({
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      parentId: null,
+      title,
+      content: serializedContent,
+      isExpanded: true,
+      isFavorite: false,
+    });
+    setNodes((prev) => [...prev, created]);
+    Alert.alert(
+      'Salvo nos Espaços!',
+      `"${title}" foi adicionado às suas notas do Nexus.`
+    );
+  };
+
   const handleCreateCourse = (title: string) => {
     const created = insertCourse(title);
     setCourses((prev) => [...prev, created]);
@@ -592,7 +613,10 @@ export default function App() {
 
   const handleExportLessonNotesToNexus = (lesson: CourseLessonItem) => {
     const blocks = [createBlock('h2', `Resumo: ${lesson.title}`)];
-    if (lesson.mediaUri && (lesson.sourceType === 'youtube' || lesson.sourceType === 'site')) {
+    if (
+      lesson.mediaUri &&
+      (lesson.sourceType === 'youtube' || lesson.sourceType === 'site')
+    ) {
       blocks.push(
         createBlock('bookmark', lesson.title, { url: lesson.mediaUri })
       );
@@ -604,9 +628,11 @@ export default function App() {
       blocks.push(createBlock('h3', 'Perguntas e Dúvidas'));
       for (const q of lesson.questions) {
         blocks.push(
-          createBlock('callout', `${q.question}${q.answer ? `\nResposta: ${q.answer}` : ''}`, {
-            calloutVariant: 'question',
-          })
+          createBlock(
+            'callout',
+            `${q.question}${q.answer ? `\nResposta: ${q.answer}` : ''}`,
+            { calloutVariant: 'question' }
+          )
         );
       }
     }
@@ -638,6 +664,7 @@ export default function App() {
 
   const openPage = (id: string) => {
     setShowCoursesView(false);
+    setShowProductivityHub(false);
     setPageHistory((prev) => {
       if (prev[prev.length - 1] === id) return prev;
       return [...prev, id];
@@ -1060,10 +1087,10 @@ export default function App() {
               <Text style={{ fontSize: 24 }}>🎓</Text>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>
-                  Meus Estudos
+                  Nexus Flow
                 </Text>
                 <Text style={{ color: theme.textDim, fontSize: 12 }}>
-                  {courses.length} curso(s)
+                  {nodes.length} notas • {courses.length} curso(s)
                 </Text>
               </View>
               <TouchableOpacity
@@ -1080,6 +1107,7 @@ export default function App() {
               style={[
                 styles.drawerNavItem,
                 !showCoursesView &&
+                  !showProductivityHub &&
                   activeTab === 'home' && {
                     backgroundColor: theme.isDark
                       ? 'rgba(99, 102, 241, 0.25)'
@@ -1089,6 +1117,7 @@ export default function App() {
               onPress={() => {
                 setDrawerVisible(false);
                 setShowCoursesView(false);
+                setShowProductivityHub(false);
                 setPageHistory([]);
                 setActiveTab('home');
               }}
@@ -1096,6 +1125,28 @@ export default function App() {
               <Text style={{ fontSize: 16 }}>🏠</Text>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
                 Início
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.drawerNavItem,
+                showProductivityHub && {
+                  backgroundColor: theme.isDark
+                    ? 'rgba(99, 102, 241, 0.25)'
+                    : '#EDE9FE',
+                },
+              ]}
+              onPress={() => {
+                setDrawerVisible(false);
+                setShowCoursesView(false);
+                setPageHistory([]);
+                setShowProductivityHub(true);
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>🧰</Text>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
+                Ferramentas Flow
               </Text>
             </TouchableOpacity>
 
@@ -1110,6 +1161,7 @@ export default function App() {
               ]}
               onPress={() => {
                 setDrawerVisible(false);
+                setShowProductivityHub(false);
                 setPageHistory([]);
                 setInitialCourseId(null);
                 setShowCoursesView(true);
@@ -1125,6 +1177,7 @@ export default function App() {
               style={[
                 styles.drawerNavItem,
                 !showCoursesView &&
+                  !showProductivityHub &&
                   activeTab === 'spaces' && {
                     backgroundColor: theme.isDark
                       ? 'rgba(99, 102, 241, 0.25)'
@@ -1134,6 +1187,7 @@ export default function App() {
               onPress={() => {
                 setDrawerVisible(false);
                 setShowCoursesView(false);
+                setShowProductivityHub(false);
                 setPageHistory([]);
                 setActiveTab('spaces');
               }}
@@ -1158,7 +1212,7 @@ export default function App() {
                 paddingHorizontal: 10,
               }}
             >
-              ACESSO RÁPIDO
+              ACESSO RÁPIDO — CURSOS
             </Text>
 
             <ScrollView>
@@ -1173,6 +1227,7 @@ export default function App() {
                     style={styles.drawerCourseRow}
                     onPress={() => {
                       setDrawerVisible(false);
+                      setShowProductivityHub(false);
                       setPageHistory([]);
                       setInitialCourseId(c.id);
                       setShowCoursesView(true);
@@ -1705,7 +1760,28 @@ export default function App() {
     <View style={{ flex: 1 }}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
-      {showCoursesView ? (
+      {showProductivityHub ? (
+        <ProductivityHubView
+          nodes={nodes}
+          courses={courses}
+          lessons={courseLessons}
+          theme={theme}
+          onBackHome={() => {
+            setShowProductivityHub(false);
+            setActiveTab('home');
+          }}
+          onOpenDrawer={() => setDrawerVisible(true)}
+          onGoToTasks={() => {
+            setShowProductivityHub(false);
+            setActiveTab('tasks');
+          }}
+          onGoToSpaces={() => {
+            setShowProductivityHub(false);
+            setActiveTab('spaces');
+          }}
+          onExportToSpaces={handleExportProductivityToSpaces}
+        />
+      ) : showCoursesView ? (
         <CoursesView
           courses={courses}
           modules={courseModules}
@@ -1993,7 +2069,7 @@ export default function App() {
               <View>
                 <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
                 <Text style={[styles.subtitle, { color: theme.textDim }]}>
-                  v0.9 • {nodes.length} notas • {courses.length} cursos
+                  v1.0 • {nodes.length} notas • {courses.length} cursos
                 </Text>
               </View>
             </View>
@@ -2052,6 +2128,7 @@ export default function App() {
                 setInitialCourseId(null);
                 setShowCoursesView(true);
               }}
+              onOpenProductivityHub={() => setShowProductivityHub(true)}
               onAddCustomSource={handleAddCustomSource}
               onDeleteCustomSource={handleDeleteCustomSource}
               onOpenWebUrl={handleOpenWebUrl}
@@ -2128,7 +2205,7 @@ export default function App() {
                 </View>
               )}
               <Text style={[styles.tipText, { color: theme.textDim }]}>
-                Acesse Meus Cursos na aba Início ou pelo menu ☰ para organizar módulos e videoaulas!
+                Nexus v1.0 completo: Pesquisa Multi-Fontes, Meus Cursos, Ferramentas Flow e Segundo Cérebro offline!
               </Text>
             </ScrollView>
           )}
@@ -2194,7 +2271,6 @@ export default function App() {
         </View>
       )}
 
-      {/* Navegador Interno sobreposto para não perder o ponto da aula/nota */}
       {browserSession && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 50 }]}>
           <InAppBrowser
