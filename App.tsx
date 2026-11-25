@@ -15,22 +15,41 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
+  CourseItem,
+  CourseLessonItem,
+  CourseModuleItem,
+  LessonSourceType,
   NexusNode,
   NodeSnapshot,
+  deleteCourseCascade,
+  deleteCourseLesson,
+  deleteCourseModuleCascade,
   deleteNodesByIds,
   exportBackupJson,
+  getAllCourseLessons,
+  getAllCourseModules,
+  getAllCourses,
   getAllNodes,
   getAppMeta,
   getNodeSnapshots,
   importBackupJson,
   initDatabase,
+  insertCourse,
+  insertCourseLesson,
+  insertCourseModule,
   insertNode,
+  renameCourse,
+  renameCourseModule,
   saveNodeSnapshot,
   setAllNodesExpanded,
   setAppMeta,
   setNodeExpanded,
   setNodeFavorite,
+  swapCourseLessonOrder,
+  swapCourseModuleOrder,
+  swapCourseOrder,
   swapSiblingOrder,
+  updateCourseLesson,
   updateNodeContent,
   updateNodeParent,
 } from './src/database/db';
@@ -42,6 +61,7 @@ import HomeSearchView, {
   SearchSource,
 } from './src/components/HomeSearchView';
 import InAppBrowser from './src/components/InAppBrowser';
+import CoursesView from './src/components/CoursesView';
 import {
   DARK_THEME,
   DEFAULT_EDITOR_PREFS,
@@ -131,8 +151,15 @@ function getDescendantIds(allNodes: NexusNode[], rootId: string): string[] {
 
 export default function App() {
   const [nodes, setNodes] = useState<NexusNode[]>([]);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [courseModules, setCourseModules] = useState<CourseModuleItem[]>([]);
+  const [courseLessons, setCourseLessons] = useState<CourseLessonItem[]>([]);
+
   const [activeTab, setActiveTab] = useState<MainTab>('home');
   const [pageHistory, setPageHistory] = useState<string[]>([]);
+  const [showCoursesView, setShowCoursesView] = useState(false);
+  const [initialCourseId, setInitialCourseId] = useState<string | null>(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [editorPrefs, setEditorPrefs] = useState<EditorPrefs>(
@@ -143,7 +170,6 @@ export default function App() {
   );
   const [isZenMode, setIsZenMode] = useState(false);
 
-  // Pesquisa Multi-Fontes e Browser Interno
   const [customSources, setCustomSources] = useState<SearchSource[]>([]);
   const [savedSearches, setSavedSearches] = useState<SavedSearchItem[]>([]);
   const [recentSearches, setRecentSearches] = useState<SavedSearchItem[]>([]);
@@ -169,10 +195,17 @@ export default function App() {
 
   const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
 
+  const reloadCoursesState = () => {
+    setCourses(getAllCourses());
+    setCourseModules(getAllCourseModules());
+    setCourseLessons(getAllCourseLessons());
+  };
+
   useEffect(() => {
     try {
       initDatabase();
       setNodes(getAllNodes());
+      reloadCoursesState();
 
       const savedTheme = getAppMeta('theme');
       if (savedTheme === 'light') setIsDarkMode(false);
@@ -232,6 +265,10 @@ export default function App() {
       if (browserSession) {
         return false;
       }
+      if (drawerVisible) {
+        setDrawerVisible(false);
+        return true;
+      }
       if (backupModalVisible) {
         setBackupModalVisible(false);
         return true;
@@ -252,6 +289,9 @@ export default function App() {
         setNewTopicModalVisible(false);
         return true;
       }
+      if (showCoursesView) {
+        return false;
+      }
       if (isZenMode) {
         setIsZenMode(false);
         return true;
@@ -270,6 +310,8 @@ export default function App() {
     return () => subscription.remove();
   }, [
     browserSession,
+    drawerVisible,
+    showCoursesView,
     backupModalVisible,
     historyModalNodeId,
     moveNodeId,
@@ -424,7 +466,178 @@ export default function App() {
     );
   };
 
+  // Handlers de Meus Cursos
+  const handleCreateCourse = (title: string) => {
+    const created = insertCourse(title);
+    setCourses((prev) => [...prev, created]);
+  };
+
+  const handleRenameCourse = (id: string, title: string) => {
+    renameCourse(id, title);
+    setCourses((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+  };
+
+  const handleSwapCourseOrder = (
+    idA: string,
+    orderA: number,
+    idB: string,
+    orderB: number
+  ) => {
+    swapCourseOrder(idA, orderA, idB, orderB);
+    setCourses((prev) =>
+      prev
+        .map((c) => {
+          if (c.id === idA) return { ...c, sortOrder: orderB };
+          if (c.id === idB) return { ...c, sortOrder: orderA };
+          return c;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
+  };
+
+  const handleDeleteCourse = (id: string) => {
+    deleteCourseCascade(id);
+    reloadCoursesState();
+  };
+
+  const handleCreateModule = (courseId: string, title: string) => {
+    const created = insertCourseModule(courseId, title);
+    setCourseModules((prev) => [...prev, created]);
+  };
+
+  const handleRenameModule = (id: string, title: string) => {
+    renameCourseModule(id, title);
+    setCourseModules((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, title } : m))
+    );
+  };
+
+  const handleSwapModuleOrder = (
+    idA: string,
+    orderA: number,
+    idB: string,
+    orderB: number
+  ) => {
+    swapCourseModuleOrder(idA, orderA, idB, orderB);
+    setCourseModules((prev) =>
+      prev
+        .map((m) => {
+          if (m.id === idA) return { ...m, sortOrder: orderB };
+          if (m.id === idB) return { ...m, sortOrder: orderA };
+          return m;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
+  };
+
+  const handleDeleteModule = (id: string) => {
+    deleteCourseModuleCascade(id);
+    reloadCoursesState();
+  };
+
+  const handleCreateLesson = (params: {
+    moduleId: string;
+    courseId: string;
+    title: string;
+    sourceType: LessonSourceType;
+    mediaUri: string;
+  }) => {
+    const created = insertCourseLesson(params);
+    setCourseLessons((prev) => [...prev, created]);
+  };
+
+  const handleUpdateLesson = (
+    id: string,
+    patch: Partial<
+      Pick<
+        CourseLessonItem,
+        | 'title'
+        | 'sourceType'
+        | 'mediaUri'
+        | 'isCompleted'
+        | 'notes'
+        | 'questions'
+        | 'links'
+      >
+    >
+  ) => {
+    updateCourseLesson(id, patch);
+    setCourseLessons((prev) =>
+      prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
+    );
+  };
+
+  const handleSwapLessonOrder = (
+    idA: string,
+    orderA: number,
+    idB: string,
+    orderB: number
+  ) => {
+    swapCourseLessonOrder(idA, orderA, idB, orderB);
+    setCourseLessons((prev) =>
+      prev
+        .map((l) => {
+          if (l.id === idA) return { ...l, sortOrder: orderB };
+          if (l.id === idB) return { ...l, sortOrder: orderA };
+          return l;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
+  };
+
+  const handleDeleteLesson = (id: string) => {
+    deleteCourseLesson(id);
+    setCourseLessons((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  const handleExportLessonNotesToNexus = (lesson: CourseLessonItem) => {
+    const blocks = [createBlock('h2', `Resumo: ${lesson.title}`)];
+    if (lesson.mediaUri && (lesson.sourceType === 'youtube' || lesson.sourceType === 'site')) {
+      blocks.push(
+        createBlock('bookmark', lesson.title, { url: lesson.mediaUri })
+      );
+    }
+    if (lesson.notes.trim()) {
+      blocks.push(createBlock('paragraph', lesson.notes.trim()));
+    }
+    if (lesson.questions.length > 0) {
+      blocks.push(createBlock('h3', 'Perguntas e Dúvidas'));
+      for (const q of lesson.questions) {
+        blocks.push(
+          createBlock('callout', `${q.question}${q.answer ? `\nResposta: ${q.answer}` : ''}`, {
+            calloutVariant: 'question',
+          })
+        );
+      }
+    }
+    blocks.push(createBlock('paragraph', '#cursos #estudos'));
+
+    const parent =
+      nodes.find((n) => n.title.toLowerCase() === 'estudos') ?? null;
+
+    const created = insertNode({
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      parentId: parent ? parent.id : null,
+      title: `Aula: ${lesson.title}`,
+      content: serializeBlocks(blocks),
+      isExpanded: true,
+      isFavorite: false,
+    });
+
+    if (parent) setNodeExpanded(parent.id, true);
+    setNodes((prev) =>
+      prev
+        .map((n) => (n.id === parent?.id ? { ...n, isExpanded: true } : n))
+        .concat(created)
+    );
+    Alert.alert(
+      'Enviado para Espaços!',
+      `A nota "Aula: ${lesson.title}" foi salva no seu Segundo Cérebro.`
+    );
+  };
+
   const openPage = (id: string) => {
+    setShowCoursesView(false);
     setPageHistory((prev) => {
       if (prev[prev.length - 1] === id) return prev;
       return [...prev, id];
@@ -680,6 +893,7 @@ export default function App() {
     try {
       const importedCount = importBackupJson(trimmed);
       setNodes(getAllNodes());
+      reloadCoursesState();
       setEditorRefreshKey((k) => k + 1);
       setBackupJsonInput('');
       setBackupModalVisible(false);
@@ -826,6 +1040,166 @@ export default function App() {
     if (!moveNode) return new Set<string>();
     return new Set(getDescendantIds(nodes, moveNode.id));
   }, [nodes, moveNode]);
+
+  function renderDrawerModal() {
+    return (
+      <Modal
+        visible={drawerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDrawerVisible(false)}
+      >
+        <View style={styles.drawerOverlay}>
+          <View
+            style={[
+              styles.drawerPanel,
+              { backgroundColor: theme.surface, borderRightColor: theme.border },
+            ]}
+          >
+            <View style={styles.drawerHeader}>
+              <Text style={{ fontSize: 24 }}>🎓</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 17, fontWeight: '800' }}>
+                  Meus Estudos
+                </Text>
+                <Text style={{ color: theme.textDim, fontSize: 12 }}>
+                  {courses.length} curso(s)
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDrawerVisible(false)}
+                style={{ padding: 6 }}
+              >
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.drawerNavItem,
+                !showCoursesView &&
+                  activeTab === 'home' && {
+                    backgroundColor: theme.isDark
+                      ? 'rgba(99, 102, 241, 0.25)'
+                      : '#EDE9FE',
+                  },
+              ]}
+              onPress={() => {
+                setDrawerVisible(false);
+                setShowCoursesView(false);
+                setPageHistory([]);
+                setActiveTab('home');
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>🏠</Text>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
+                Início
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.drawerNavItem,
+                showCoursesView && {
+                  backgroundColor: theme.isDark
+                    ? 'rgba(99, 102, 241, 0.25)'
+                    : '#EDE9FE',
+                },
+              ]}
+              onPress={() => {
+                setDrawerVisible(false);
+                setPageHistory([]);
+                setInitialCourseId(null);
+                setShowCoursesView(true);
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>🎓</Text>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
+                Meus Cursos
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.drawerNavItem,
+                !showCoursesView &&
+                  activeTab === 'spaces' && {
+                    backgroundColor: theme.isDark
+                      ? 'rgba(99, 102, 241, 0.25)'
+                      : '#EDE9FE',
+                  },
+              ]}
+              onPress={() => {
+                setDrawerVisible(false);
+                setShowCoursesView(false);
+                setPageHistory([]);
+                setActiveTab('spaces');
+              }}
+            >
+              <Text style={{ fontSize: 16 }}>🧠</Text>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>
+                Espaços (Segundo Cérebro)
+              </Text>
+            </TouchableOpacity>
+
+            <View
+              style={[styles.drawerDivider, { backgroundColor: theme.border }]}
+            />
+
+            <Text
+              style={{
+                color: theme.textDim,
+                fontSize: 11,
+                fontWeight: '800',
+                letterSpacing: 1,
+                marginBottom: 8,
+                paddingHorizontal: 10,
+              }}
+            >
+              ACESSO RÁPIDO
+            </Text>
+
+            <ScrollView>
+              {courses.length === 0 ? (
+                <Text style={{ color: theme.textDim, fontSize: 12, paddingHorizontal: 10 }}>
+                  Nenhum curso criado ainda.
+                </Text>
+              ) : (
+                courses.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.drawerCourseRow}
+                    onPress={() => {
+                      setDrawerVisible(false);
+                      setPageHistory([]);
+                      setInitialCourseId(c.id);
+                      setShowCoursesView(true);
+                    }}
+                  >
+                    <Text style={{ fontSize: 16 }}>📁</Text>
+                    <Text
+                      style={{ color: theme.textMuted, fontSize: 14, fontWeight: '600', flex: 1 }}
+                      numberOfLines={1}
+                    >
+                      {c.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setDrawerVisible(false)}
+          />
+        </View>
+      </Modal>
+    );
+  }
 
   function renderModals() {
     return (
@@ -1270,7 +1644,7 @@ export default function App() {
                 💾 Backup do Segundo Cérebro
               </Text>
               <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
-                Exporte todas as suas {nodes.length} notas em JSON para guardar no Google Drive/Arquivos, ou cole um backup para restaurar.
+                Exporte todas as suas {nodes.length} notas e {courses.length} cursos em JSON, ou cole um backup para restaurar.
               </Text>
 
               <TouchableOpacity
@@ -1327,209 +1701,156 @@ export default function App() {
     );
   }
 
-  // Se o Navegador Interno estiver aberto
-  if (browserSession) {
-    return (
-      <>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-        <InAppBrowser
-          initialUrl={browserSession.url}
-          initialTitle={browserSession.title}
-          sourceId={browserSession.sourceId}
-          sourceName={browserSession.sourceName}
-          sourceIcon={browserSession.sourceIcon}
-          initialQuery={browserSession.query}
-          nodes={nodes}
+  return (
+    <View style={{ flex: 1 }}>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+
+      {showCoursesView ? (
+        <CoursesView
+          courses={courses}
+          modules={courseModules}
+          lessons={courseLessons}
+          initialCourseId={initialCourseId}
           theme={theme}
-          onClose={() => setBrowserSession(null)}
-          onSaveSearchBookmark={(params) =>
-            handleSaveSearch({
-              id: `sv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-              query: params.query,
-              sourceId: params.sourceId,
-              sourceName: params.sourceName,
-              sourceIcon: params.sourceIcon,
-              url: params.url,
-              createdAt: Date.now(),
+          onBackHome={() => {
+            setShowCoursesView(false);
+            setInitialCourseId(null);
+            setActiveTab('home');
+          }}
+          onOpenDrawer={() => setDrawerVisible(true)}
+          onCreateCourse={handleCreateCourse}
+          onRenameCourse={handleRenameCourse}
+          onSwapCourseOrder={handleSwapCourseOrder}
+          onDeleteCourse={handleDeleteCourse}
+          onCreateModule={handleCreateModule}
+          onRenameModule={handleRenameModule}
+          onSwapModuleOrder={handleSwapModuleOrder}
+          onDeleteModule={handleDeleteModule}
+          onCreateLesson={handleCreateLesson}
+          onUpdateLesson={handleUpdateLesson}
+          onSwapLessonOrder={handleSwapLessonOrder}
+          onDeleteLesson={handleDeleteLesson}
+          onOpenInBrowser={(url, title, sourceId) =>
+            setBrowserSession({
+              url,
+              title,
+              sourceId,
+              sourceName: title,
+              sourceIcon: sourceId === 'youtube' ? '▶' : '🌐',
+              query: title,
             })
           }
-          onSaveLinkToSpace={handleSaveLinkToSpace}
+          onExportNotesToNexus={handleExportLessonNotesToNexus}
         />
-      </>
-    );
-  }
-
-  if (selectedNode) {
-    const breadcrumbs = getBreadcrumbs(selectedNode);
-    const subpages = nodes
-      .filter((n) => n.parentId === selectedNode.id)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-    const tags = extractTags(selectedNode.content);
-    const links = extractLinks(selectedNode.content);
-    const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
-
-    return (
-      <View style={[styles.container, { backgroundColor: theme.bg }]}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-
-        {!isZenMode && (
-          <View
-            style={[styles.pageHeader, { borderBottomColor: theme.border }]}
-          >
-            <View style={styles.pageHeaderLeft}>
-              <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
-                <Text style={{ color: theme.accent, fontSize: 15, fontWeight: '600' }}>
-                  ← Voltar
-                </Text>
-              </TouchableOpacity>
-              {pageHistory.length > 1 && (
-                <TouchableOpacity
-                  onPress={goHome}
-                  style={[
-                    styles.homeChip,
-                    { backgroundColor: theme.surfaceAlt },
-                  ]}
-                >
-                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
-                    Início
+      ) : selectedNode ? (
+        <View style={[styles.container, { backgroundColor: theme.bg }]}>
+          {!isZenMode && (
+            <View
+              style={[styles.pageHeader, { borderBottomColor: theme.border }]}
+            >
+              <View style={styles.pageHeaderLeft}>
+                <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
+                  <Text style={{ color: theme.accent, fontSize: 15, fontWeight: '600' }}>
+                    ← Voltar
                   </Text>
                 </TouchableOpacity>
-              )}
-            </View>
-
-            <View style={styles.pageHeaderRight}>
-              <Text style={styles.savedBadge}>
-                Salvo ✓ {formatTime(selectedNode.updatedAt)}
-              </Text>
-              <TouchableOpacity
-                onPress={toggleTheme}
-                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
-              >
-                <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => toggleFavorite(selectedNode.id)}
-                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
-              >
-                <Text style={styles.favBtnText}>
-                  {selectedNode.isFavorite ? '★' : '☆'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setMenuNodeId(selectedNode.id)}
-                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
-              >
-                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                  ⋯
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
-          {!isZenMode && (
-            <View style={styles.breadcrumbRow}>
-              {breadcrumbs.map((crumb, idx) => (
-                <View key={crumb.id} style={styles.breadcrumbItem}>
-                  {idx > 0 && (
-                    <Text style={{ color: theme.textDim, fontSize: 12 }}>
-                      {' '}
-                      ›{' '}
-                    </Text>
-                  )}
-                  <TouchableOpacity onPress={() => openPage(crumb.id)}>
-                    <Text style={{ color: theme.textDim, fontSize: 12 }}>
-                      {crumb.title}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          <TextInput
-            style={[styles.pageTitleInput, { color: theme.text }]}
-            value={selectedNode.title}
-            onChangeText={(text) =>
-              handleEditPage(selectedNode.id, text, selectedNode.content)
-            }
-            placeholder="Título da página"
-            placeholderTextColor={theme.textDim}
-          />
-
-          <BlockEditor
-            noteId={`${selectedNode.id}-${editorRefreshKey}`}
-            rawContent={selectedNode.content}
-            availableNoteTitles={availableNoteTitles.filter(
-              (t) => t !== selectedNode.title
-            )}
-            theme={theme}
-            prefs={editorPrefs}
-            toolbarIds={toolbarIds}
-            isZenMode={isZenMode}
-            onChangePrefs={handlePrefsChange}
-            onChangeToolbar={handleToolbarChange}
-            onToggleZenMode={() => setIsZenMode((z) => !z)}
-            onChangeSerialized={(serialized) =>
-              handleEditPage(selectedNode.id, selectedNode.title, serialized)
-            }
-            onPressInternalLink={openLinkedNoteByTitle}
-          />
-
-          {!isZenMode && (
-            <>
-              <View
-                style={[
-                  styles.sectionBox,
-                  {
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <View style={styles.sectionHeaderRow}>
-                  <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
-                    Subtópicos ({subpages.length})
-                  </Text>
+                {pageHistory.length > 1 && (
                   <TouchableOpacity
-                    onPress={() => openCreateModal(selectedNode.id)}
+                    onPress={goHome}
+                    style={[
+                      styles.homeChip,
+                      { backgroundColor: theme.surfaceAlt },
+                    ]}
                   >
-                    <Text
-                      style={{
-                        color: theme.accent,
-                        fontSize: 13,
-                        fontWeight: '600',
-                        marginBottom: 8,
-                      }}
-                    >
-                      + Novo subtópico
+                    <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+                      Início
                     </Text>
                   </TouchableOpacity>
-                </View>
-                {subpages.length === 0 ? (
-                  <Text style={{ color: theme.textDim, fontSize: 13 }}>
-                    Nenhum subtópico ainda.
-                  </Text>
-                ) : (
-                  subpages.map((sub) => (
-                    <TouchableOpacity
-                      key={sub.id}
-                      style={[
-                        styles.subpageCard,
-                        { backgroundColor: theme.surfaceAlt },
-                      ]}
-                      onPress={() => openPage(sub.id)}
-                    >
-                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
-                        📄 {sub.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))
                 )}
               </View>
 
-              {(tags.length > 0 || links.length > 0) && (
+              <View style={styles.pageHeaderRight}>
+                <Text style={styles.savedBadge}>
+                  Salvo ✓ {formatTime(selectedNode.updatedAt)}
+                </Text>
+                <TouchableOpacity
+                  onPress={toggleTheme}
+                  style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+                >
+                  <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => toggleFavorite(selectedNode.id)}
+                  style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+                >
+                  <Text style={styles.favBtnText}>
+                    {selectedNode.isFavorite ? '★' : '☆'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setMenuNodeId(selectedNode.id)}
+                  style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+                >
+                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                    ⋯
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
+            {!isZenMode && (
+              <View style={styles.breadcrumbRow}>
+                {getBreadcrumbs(selectedNode).map((crumb, idx) => (
+                  <View key={crumb.id} style={styles.breadcrumbItem}>
+                    {idx > 0 && (
+                      <Text style={{ color: theme.textDim, fontSize: 12 }}>
+                        {' '}
+                        ›{' '}
+                      </Text>
+                    )}
+                    <TouchableOpacity onPress={() => openPage(crumb.id)}>
+                      <Text style={{ color: theme.textDim, fontSize: 12 }}>
+                        {crumb.title}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <TextInput
+              style={[styles.pageTitleInput, { color: theme.text }]}
+              value={selectedNode.title}
+              onChangeText={(text) =>
+                handleEditPage(selectedNode.id, text, selectedNode.content)
+              }
+              placeholder="Título da página"
+              placeholderTextColor={theme.textDim}
+            />
+
+            <BlockEditor
+              noteId={`${selectedNode.id}-${editorRefreshKey}`}
+              rawContent={selectedNode.content}
+              availableNoteTitles={availableNoteTitles.filter(
+                (t) => t !== selectedNode.title
+              )}
+              theme={theme}
+              prefs={editorPrefs}
+              toolbarIds={toolbarIds}
+              isZenMode={isZenMode}
+              onChangePrefs={handlePrefsChange}
+              onChangeToolbar={handleToolbarChange}
+              onToggleZenMode={() => setIsZenMode((z) => !z)}
+              onChangeSerialized={(serialized) =>
+                handleEditPage(selectedNode.id, selectedNode.title, serialized)
+              }
+              onPressInternalLink={openLinkedNoteByTitle}
+            />
+
+            {!isZenMode && (
+              <>
                 <View
                   style={[
                     styles.sectionBox,
@@ -1539,258 +1860,370 @@ export default function App() {
                     },
                   ]}
                 >
-                  <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
-                    Conexões e Tags
-                  </Text>
-                  <View style={styles.chipsWrap}>
-                    {tags.map((tag) => (
-                      <View key={tag} style={styles.tagChip}>
-                        <Text style={styles.tagChipText}>{tag}</Text>
-                      </View>
-                    ))}
-                    {links.map((link) => (
-                      <TouchableOpacity
-                        key={link}
-                        style={styles.linkChip}
-                        onPress={() => openLinkedNoteByTitle(link)}
-                      >
-                        <Text style={styles.linkChipText}>[[{link}]]</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              <View
-                style={[
-                  styles.sectionBox,
-                  {
-                    marginBottom: 32,
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
-                  },
-                ]}
-              >
-                <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
-                  Backlinks ({backlinks.length})
-                </Text>
-                {backlinks.length === 0 ? (
-                  <Text style={{ color: theme.textDim, fontSize: 13 }}>
-                    Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
-                  </Text>
-                ) : (
-                  backlinks.map((bl) => (
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                      Subtópicos (
+                      {
+                        nodes.filter((n) => n.parentId === selectedNode.id)
+                          .length
+                      }
+                      )
+                    </Text>
                     <TouchableOpacity
-                      key={bl.id}
-                      style={[
-                        styles.subpageCard,
-                        { backgroundColor: theme.surfaceAlt },
-                      ]}
-                      onPress={() => openPage(bl.id)}
+                      onPress={() => openCreateModal(selectedNode.id)}
                     >
-                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
-                        🔗 {bl.title}
+                      <Text
+                        style={{
+                          color: theme.accent,
+                          fontSize: 13,
+                          fontWeight: '600',
+                          marginBottom: 8,
+                        }}
+                      >
+                        + Novo subtópico
                       </Text>
                     </TouchableOpacity>
-                  ))
-                )}
-              </View>
-            </>
-          )}
-        </ScrollView>
+                  </View>
+                  {nodes
+                    .filter((n) => n.parentId === selectedNode.id)
+                    .sort((a, b) => a.sortOrder - b.sortOrder)
+                    .map((sub) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        style={[
+                          styles.subpageCard,
+                          { backgroundColor: theme.surfaceAlt },
+                        ]}
+                        onPress={() => openPage(sub.id)}
+                      >
+                        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                          📄 {sub.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
 
-        {renderModals()}
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <View>
-          <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
-          <Text style={[styles.subtitle, { color: theme.textDim }]}>
-            v0.8 • Segundo Cérebro ({nodes.length} notas)
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]}
-            onPress={toggleTheme}
-          >
-            <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]}
-            onPress={() => setBackupModalVisible(true)}
-          >
-            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
-              ⚙
-            </Text>
-          </TouchableOpacity>
-          {activeTab === 'spaces' && (
-            <TouchableOpacity
-              style={[
-                styles.secondaryBtn,
-                { backgroundColor: theme.surfaceAlt },
-              ]}
-              onPress={toggleExpandAll}
-            >
-              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
-                {anyExpanded ? '▸' : '▾'}
-              </Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[styles.primaryBtn, { backgroundColor: theme.accent }]}
-            onPress={() => openCreateModal(null)}
-          >
-            <Text style={styles.primaryBtnText}>+ Espaço</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {activeTab === 'home' && (
-        <HomeSearchView
-          nodes={nodes}
-          theme={theme}
-          customSources={customSources}
-          savedSearches={savedSearches}
-          recentSearches={recentSearches}
-          onAddCustomSource={handleAddCustomSource}
-          onDeleteCustomSource={handleDeleteCustomSource}
-          onOpenWebUrl={handleOpenWebUrl}
-          onSaveSearch={handleSaveSearch}
-          onDeleteSavedSearch={handleDeleteSavedSearch}
-          onClearRecentSearches={handleClearRecentSearches}
-          onOpenNode={openPage}
-        />
-      )}
-
-      {activeTab === 'spaces' && (
-        <ScrollView style={styles.scrollArea}>
-          {favoriteNodes.length > 0 && (
-            <View style={styles.favStripWrap}>
-              <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
-                ★ FAVORITOS
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.favStripRow}
-              >
-                {favoriteNodes.map((fav) => (
-                  <TouchableOpacity
-                    key={fav.id}
+                {(extractTags(selectedNode.content).length > 0 ||
+                  extractLinks(selectedNode.content).length > 0) && (
+                  <View
                     style={[
-                      styles.favChip,
+                      styles.sectionBox,
                       {
                         backgroundColor: theme.surface,
                         borderColor: theme.border,
                       },
                     ]}
-                    onPress={() => openPage(fav.id)}
                   >
-                    <Text style={styles.favChipText} numberOfLines={1}>
-                      ★ {fav.title}
+                    <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                      Conexões e Tags
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                    <View style={styles.chipsWrap}>
+                      {extractTags(selectedNode.content).map((tag) => (
+                        <View key={tag} style={styles.tagChip}>
+                          <Text style={styles.tagChipText}>{tag}</Text>
+                        </View>
+                      ))}
+                      {extractLinks(selectedNode.content).map((link) => (
+                        <TouchableOpacity
+                          key={link}
+                          style={styles.linkChip}
+                          onPress={() => openLinkedNoteByTitle(link)}
+                        >
+                          <Text style={styles.linkChipText}>[[{link}]]</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                <View
+                  style={[
+                    styles.sectionBox,
+                    {
+                      marginBottom: 32,
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                    Backlinks (
+                    {getBacklinks(selectedNode.title, selectedNode.id).length})
+                  </Text>
+                  {getBacklinks(selectedNode.title, selectedNode.id).length ===
+                  0 ? (
+                    <Text style={{ color: theme.textDim, fontSize: 13 }}>
+                      Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
+                    </Text>
+                  ) : (
+                    getBacklinks(selectedNode.title, selectedNode.id).map(
+                      (bl) => (
+                        <TouchableOpacity
+                          key={bl.id}
+                          style={[
+                            styles.subpageCard,
+                            { backgroundColor: theme.surfaceAlt },
+                          ]}
+                          onPress={() => openPage(bl.id)}
+                        >
+                          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                            🔗 {bl.title}
+                          </Text>
+                        </TouchableOpacity>
+                      )
+                    )
+                  )}
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </View>
+      ) : (
+        <View style={[styles.container, { backgroundColor: theme.bg }]}>
+          <View style={[styles.header, { borderBottomColor: theme.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setDrawerVisible(true)}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
+                  ☰
+                </Text>
+              </TouchableOpacity>
+              <View>
+                <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
+                <Text style={[styles.subtitle, { color: theme.textDim }]}>
+                  v0.9 • {nodes.length} notas • {courses.length} cursos
+                </Text>
+              </View>
             </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={[
+                  styles.secondaryBtn,
+                  { backgroundColor: theme.surfaceAlt },
+                ]}
+                onPress={toggleTheme}
+              >
+                <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.secondaryBtn,
+                  { backgroundColor: theme.surfaceAlt },
+                ]}
+                onPress={() => setBackupModalVisible(true)}
+              >
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                  ⚙
+                </Text>
+              </TouchableOpacity>
+              {activeTab === 'spaces' && (
+                <TouchableOpacity
+                  style={[
+                    styles.secondaryBtn,
+                    { backgroundColor: theme.surfaceAlt },
+                  ]}
+                  onPress={toggleExpandAll}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+                    {anyExpanded ? '▸' : '▾'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.primaryBtn, { backgroundColor: theme.accent }]}
+                onPress={() => openCreateModal(null)}
+              >
+                <Text style={styles.primaryBtnText}>+ Espaço</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {activeTab === 'home' && (
+            <HomeSearchView
+              nodes={nodes}
+              coursesCount={courses.length}
+              theme={theme}
+              customSources={customSources}
+              savedSearches={savedSearches}
+              recentSearches={recentSearches}
+              onOpenCourses={() => {
+                setInitialCourseId(null);
+                setShowCoursesView(true);
+              }}
+              onAddCustomSource={handleAddCustomSource}
+              onDeleteCustomSource={handleDeleteCustomSource}
+              onOpenWebUrl={handleOpenWebUrl}
+              onSaveSearch={handleSaveSearch}
+              onDeleteSavedSearch={handleDeleteSavedSearch}
+              onClearRecentSearches={handleClearRecentSearches}
+              onOpenNode={openPage}
+            />
           )}
 
-          <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
-            MEUS ESPAÇOS E TÓPICOS
-          </Text>
-          {nodes.length === 0 ? (
-            <View
-              style={[
-                styles.emptyBox,
-                { backgroundColor: theme.surface, borderColor: theme.border },
-              ]}
-            >
-              <Text style={{ color: theme.textDim, fontSize: 13 }}>
-                Nenhum tópico criado ainda. Toque em "+ Espaço" para começar!
+          {activeTab === 'spaces' && (
+            <ScrollView style={styles.scrollArea}>
+              {favoriteNodes.length > 0 && (
+                <View style={styles.favStripWrap}>
+                  <Text
+                    style={[styles.sectionHeading, { color: theme.textDim }]}
+                  >
+                    ★ FAVORITOS
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.favStripRow}
+                  >
+                    {favoriteNodes.map((fav) => (
+                      <TouchableOpacity
+                        key={fav.id}
+                        style={[
+                          styles.favChip,
+                          {
+                            backgroundColor: theme.surface,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                        onPress={() => openPage(fav.id)}
+                      >
+                        <Text style={styles.favChipText} numberOfLines={1}>
+                          ★ {fav.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
+                MEUS ESPAÇOS E TÓPICOS
               </Text>
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.treeCard,
-                { backgroundColor: theme.surface, borderColor: theme.border },
-              ]}
-            >
-              {renderTree(null, 0)}
-            </View>
+              {nodes.length === 0 ? (
+                <View
+                  style={[
+                    styles.emptyBox,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ color: theme.textDim, fontSize: 13 }}>
+                    Nenhum tópico criado ainda. Toque em "+ Espaço" para começar!
+                  </Text>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.treeCard,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  {renderTree(null, 0)}
+                </View>
+              )}
+              <Text style={[styles.tipText, { color: theme.textDim }]}>
+                Acesse Meus Cursos na aba Início ou pelo menu ☰ para organizar módulos e videoaulas!
+              </Text>
+            </ScrollView>
           )}
-          <Text style={[styles.tipText, { color: theme.textDim }]}>
-            Pesquise na aba Início dentro do próprio APK e segure links para direcionar aos seus Espaços com #tags!
-          </Text>
-        </ScrollView>
+
+          {activeTab === 'graph' && (
+            <GraphView nodes={nodes} onOpenNode={openPage} />
+          )}
+
+          {activeTab === 'tags' && (
+            <TagsView nodes={nodes} onOpenNode={openPage} />
+          )}
+
+          {activeTab === 'tasks' && (
+            <TasksView
+              nodes={nodes}
+              onToggleTask={handleToggleGlobalTask}
+              onOpenNode={openPage}
+            />
+          )}
+
+          <View
+            style={[
+              styles.bottomBar,
+              { backgroundColor: theme.surface, borderTopColor: theme.border },
+            ]}
+          >
+            {(
+              [
+                { key: 'home', icon: '🏠', label: 'Início' },
+                { key: 'spaces', icon: '☰', label: 'Espaços' },
+                { key: 'graph', icon: '🕸', label: 'Grafo' },
+                { key: 'tags', icon: '#', label: 'Tags' },
+                { key: 'tasks', icon: '☑', label: 'Tarefas' },
+              ] as { key: MainTab; icon: string; label: string }[]
+            ).map((tab) => {
+              const active = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={styles.tabBtn}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text
+                    style={[
+                      styles.tabIcon,
+                      { color: active ? theme.accent : theme.textDim },
+                    ]}
+                  >
+                    {tab.icon}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.tabLabel,
+                      { color: active ? theme.accent : theme.textDim },
+                    ]}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       )}
 
-      {activeTab === 'graph' && (
-        <GraphView nodes={nodes} onOpenNode={openPage} />
+      {/* Navegador Interno sobreposto para não perder o ponto da aula/nota */}
+      {browserSession && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 50 }]}>
+          <InAppBrowser
+            initialUrl={browserSession.url}
+            initialTitle={browserSession.title}
+            sourceId={browserSession.sourceId}
+            sourceName={browserSession.sourceName}
+            sourceIcon={browserSession.sourceIcon}
+            initialQuery={browserSession.query}
+            nodes={nodes}
+            theme={theme}
+            onClose={() => setBrowserSession(null)}
+            onSaveSearchBookmark={(params) =>
+              handleSaveSearch({
+                id: `sv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                query: params.query,
+                sourceId: params.sourceId,
+                sourceName: params.sourceName,
+                sourceIcon: params.sourceIcon,
+                url: params.url,
+                createdAt: Date.now(),
+              })
+            }
+            onSaveLinkToSpace={handleSaveLinkToSpace}
+          />
+        </View>
       )}
 
-      {activeTab === 'tags' && (
-        <TagsView nodes={nodes} onOpenNode={openPage} />
-      )}
-
-      {activeTab === 'tasks' && (
-        <TasksView
-          nodes={nodes}
-          onToggleTask={handleToggleGlobalTask}
-          onOpenNode={openPage}
-        />
-      )}
-
-      <View
-        style={[
-          styles.bottomBar,
-          { backgroundColor: theme.surface, borderTopColor: theme.border },
-        ]}
-      >
-        {(
-          [
-            { key: 'home', icon: '🏠', label: 'Início' },
-            { key: 'spaces', icon: '☰', label: 'Espaços' },
-            { key: 'graph', icon: '🕸', label: 'Grafo' },
-            { key: 'tags', icon: '#', label: 'Tags' },
-            { key: 'tasks', icon: '☑', label: 'Tarefas' },
-          ] as { key: MainTab; icon: string; label: string }[]
-        ).map((tab) => {
-          const active = activeTab === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabBtn}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Text
-                style={[
-                  styles.tabIcon,
-                  { color: active ? theme.accent : theme.textDim },
-                ]}
-              >
-                {tab.icon}
-              </Text>
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: active ? theme.accent : theme.textDim },
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
+      {renderDrawerModal()}
       {renderModals()}
     </View>
   );
@@ -1806,7 +2239,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
     borderBottomWidth: 1,
   },
@@ -1816,7 +2249,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   brand: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '800',
     letterSpacing: 2,
   },
@@ -1825,12 +2258,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   secondaryBtn: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 8,
     borderRadius: 10,
   },
   primaryBtn: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: 10,
   },
@@ -2057,6 +2490,47 @@ const styles = StyleSheet.create({
     color: '#7DD3FC',
     fontSize: 12,
     fontWeight: '600',
+  },
+  drawerOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  drawerPanel: {
+    width: '78%',
+    maxWidth: 310,
+    height: '100%',
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 28) + 12 : 44,
+    paddingHorizontal: 14,
+    borderRightWidth: 1,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+    paddingHorizontal: 6,
+  },
+  drawerNavItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    marginBottom: 6,
+  },
+  drawerDivider: {
+    height: 1,
+    marginVertical: 14,
+  },
+  drawerCourseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
   },
   modalBackdrop: {
     flex: 1,
