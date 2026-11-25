@@ -27,9 +27,15 @@ import {
   updateNodeParent,
 } from './src/database/db';
 import BlockEditor from './src/components/BlockEditor';
-import { extractPlainTextFromContent } from './src/editor/blocks';
+import GraphView from './src/components/GraphView';
+import { TagsView, TasksView } from './src/components/BrainViews';
+import {
+  extractPlainTextFromContent,
+  parseContentToBlocks,
+  serializeBlocks,
+} from './src/editor/blocks';
 
-type MainTab = 'spaces' | 'favorites' | 'search';
+type MainTab = 'spaces' | 'graph' | 'tags' | 'tasks' | 'search';
 
 function extractTags(rawContent: string): string[] {
   const plain = extractPlainTextFromContent(rawContent);
@@ -187,8 +193,7 @@ export default function App() {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       parentId: newTopicParentId,
       title: trimmed,
-      content:
-        'Escreva suas ideias aqui...\n- [ ] Primeira tarefa\n#nova',
+      content: 'Escreva suas ideias aqui...\n- [ ] Primeira tarefa\n#nova',
       isExpanded: true,
       isFavorite: false,
     });
@@ -215,6 +220,16 @@ export default function App() {
         n.id === id ? { ...n, title, content, updatedAt } : n
       )
     );
+  };
+
+  const handleToggleGlobalTask = (nodeId: string, blockId: string) => {
+    const target = nodes.find((n) => n.id === nodeId);
+    if (!target) return;
+    const blocks = parseContentToBlocks(target.content).map((b) =>
+      b.id === blockId ? { ...b, checked: !b.checked } : b
+    );
+    const serialized = serializeBlocks(blocks);
+    handleEditPage(target.id, target.title, serialized);
   };
 
   const toggleFavorite = (id: string) => {
@@ -403,6 +418,11 @@ export default function App() {
 
   const favoriteNodes = useMemo(
     () => nodes.filter((n) => n.isFavorite),
+    [nodes]
+  );
+
+  const availableNoteTitles = useMemo(
+    () => nodes.map((n) => n.title),
     [nodes]
   );
 
@@ -679,6 +699,9 @@ export default function App() {
           <BlockEditor
             noteId={selectedNode.id}
             rawContent={selectedNode.content}
+            availableNoteTitles={availableNoteTitles.filter(
+              (t) => t !== selectedNode.title
+            )}
             onChangeSerialized={(serialized) =>
               handleEditPage(selectedNode.id, selectedNode.title, serialized)
             }
@@ -766,18 +789,20 @@ export default function App() {
         <View>
           <Text style={styles.brand}>NEXUS</Text>
           <Text style={styles.subtitle}>
-            v0.3 • Editor de Blocos ({nodes.length} notas)
+            v0.4 • Segundo Cérebro ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={toggleExpandAll}
-          >
-            <Text style={styles.secondaryBtnText}>
-              {anyExpanded ? '▸ Recolher' : '▾ Expandir'}
-            </Text>
-          </TouchableOpacity>
+          {activeTab === 'spaces' && (
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={toggleExpandAll}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {anyExpanded ? '▸ Recolher' : '▾ Expandir'}
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={() => openCreateModal(null)}
@@ -789,6 +814,29 @@ export default function App() {
 
       {activeTab === 'spaces' && (
         <ScrollView style={styles.scrollArea}>
+          {favoriteNodes.length > 0 && (
+            <View style={styles.favStripWrap}>
+              <Text style={styles.sectionHeading}>★ FAVORITOS</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.favStripRow}
+              >
+                {favoriteNodes.map((fav) => (
+                  <TouchableOpacity
+                    key={fav.id}
+                    style={styles.favChip}
+                    onPress={() => openPage(fav.id)}
+                  >
+                    <Text style={styles.favChipText} numberOfLines={1}>
+                      ★ {fav.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           <Text style={styles.sectionHeading}>MEUS ESPAÇOS E TÓPICOS</Text>
           {nodes.length === 0 ? (
             <View style={styles.emptyBox}>
@@ -800,40 +848,25 @@ export default function App() {
             <View style={styles.treeCard}>{renderTree(null, 0)}</View>
           )}
           <Text style={styles.tipText}>
-            Tudo salvo automaticamente no seu celular. Toque em qualquer tópico para abrir o Editor de Blocos.
+            Explore a aba Grafo para ver o mapa visual de suas conexões ou Tarefas para acompanhar todas as checklists!
           </Text>
         </ScrollView>
       )}
 
-      {activeTab === 'favorites' && (
-        <ScrollView style={styles.scrollArea}>
-          <Text style={styles.sectionHeading}>PÁGINAS FAVORITAS</Text>
-          {favoriteNodes.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyHint}>
-                Você ainda não favoritou nenhuma nota. Toque na estrela ☆ dentro de uma página para fixá-la aqui.
-              </Text>
-            </View>
-          ) : (
-            favoriteNodes.map((node) => {
-              const path = getBreadcrumbs(node)
-                .map((b) => b.title)
-                .join(' › ');
-              return (
-                <TouchableOpacity
-                  key={node.id}
-                  style={styles.searchResultCard}
-                  onPress={() => openPage(node.id)}
-                >
-                  <Text style={styles.searchResultTitle}>★ {node.title}</Text>
-                  <Text style={styles.favPathText} numberOfLines={1}>
-                    {path}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </ScrollView>
+      {activeTab === 'graph' && (
+        <GraphView nodes={nodes} onOpenNode={openPage} />
+      )}
+
+      {activeTab === 'tags' && (
+        <TagsView nodes={nodes} onOpenNode={openPage} />
+      )}
+
+      {activeTab === 'tasks' && (
+        <TasksView
+          nodes={nodes}
+          onToggleTask={handleToggleGlobalTask}
+          onOpenNode={openPage}
+        />
       )}
 
       {activeTab === 'search' && (
@@ -853,7 +886,10 @@ export default function App() {
                 style={styles.searchResultCard}
                 onPress={() => openPage(node.id)}
               >
-                <Text style={styles.searchResultTitle}>{node.title}</Text>
+                <Text style={styles.searchResultTitle}>
+                  {node.isFavorite ? '★ ' : ''}
+                  {node.title}
+                </Text>
                 <Text style={styles.searchResultSnippet} numberOfLines={2}>
                   {extractPlainTextFromContent(node.content)}
                 </Text>
@@ -870,25 +906,85 @@ export default function App() {
         >
           <Text
             style={[
-              styles.tabText,
+              styles.tabIcon,
               activeTab === 'spaces' && styles.tabTextActive,
             ]}
           >
-            ☰ Espaços
+            ☰
+          </Text>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'spaces' && styles.tabTextActive,
+            ]}
+          >
+            Espaços
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.tabBtn}
-          onPress={() => setActiveTab('favorites')}
+          onPress={() => setActiveTab('graph')}
         >
           <Text
             style={[
-              styles.tabText,
-              activeTab === 'favorites' && styles.tabTextActive,
+              styles.tabIcon,
+              activeTab === 'graph' && styles.tabTextActive,
             ]}
           >
-            ★ Favoritos
+            🕸
+          </Text>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'graph' && styles.tabTextActive,
+            ]}
+          >
+            Grafo
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.tabBtn}
+          onPress={() => setActiveTab('tags')}
+        >
+          <Text
+            style={[
+              styles.tabIcon,
+              activeTab === 'tags' && styles.tabTextActive,
+            ]}
+          >
+            #
+          </Text>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'tags' && styles.tabTextActive,
+            ]}
+          >
+            Tags
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.tabBtn}
+          onPress={() => setActiveTab('tasks')}
+        >
+          <Text
+            style={[
+              styles.tabIcon,
+              activeTab === 'tasks' && styles.tabTextActive,
+            ]}
+          >
+            ☑
+          </Text>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'tasks' && styles.tabTextActive,
+            ]}
+          >
+            Tarefas
           </Text>
         </TouchableOpacity>
 
@@ -898,11 +994,19 @@ export default function App() {
         >
           <Text
             style={[
-              styles.tabText,
+              styles.tabIcon,
               activeTab === 'search' && styles.tabTextActive,
             ]}
           >
-            ⌕ Busca
+            ⌕
+          </Text>
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'search' && styles.tabTextActive,
+            ]}
+          >
+            Busca
           </Text>
         </TouchableOpacity>
       </View>
@@ -970,6 +1074,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 14,
+  },
+  favStripWrap: {
+    marginBottom: 14,
+  },
+  favStripRow: {
+    gap: 8,
+  },
+  favChip: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    maxWidth: 170,
+  },
+  favChipText: {
+    color: '#FBBF24',
+    fontSize: 12,
+    fontWeight: '700',
   },
   sectionHeading: {
     fontSize: 11,
@@ -1051,17 +1175,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#1E293B',
     backgroundColor: '#0F172A',
-    paddingVertical: 10,
+    paddingVertical: 6,
   },
   tabBtn: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
-  tabText: {
+  tabIcon: {
     color: '#64748B',
-    fontSize: 13,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tabLabel: {
+    color: '#64748B',
+    fontSize: 10,
     fontWeight: '600',
+    marginTop: 2,
   },
   tabTextActive: {
     color: '#818CF8',
@@ -1255,11 +1385,6 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontSize: 13,
     lineHeight: 18,
-  },
-  favPathText: {
-    color: '#64748B',
-    fontSize: 12,
-    marginTop: 2,
   },
   modalBackdrop: {
     flex: 1,
