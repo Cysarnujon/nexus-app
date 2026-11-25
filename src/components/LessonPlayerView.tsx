@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -13,7 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { WebView } from 'react-native-webview';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import {
   CourseLessonItem,
   LessonLink,
@@ -50,21 +51,30 @@ interface LessonPlayerViewProps {
 
 type LessonTab = 'notes' | 'questions' | 'links' | 'ai';
 
+function extractYouTubeId(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+
+  const patterns = [
+    /youtu\.be\/([a-zA-Z0-9_-]{6,})/,
+    /[?&]v=([a-zA-Z0-9_-]{6,})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{6,})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{6,})/,
+    /youtube\.com\/live\/([a-zA-Z0-9_-]{6,})/,
+  ];
+
+  for (const regex of patterns) {
+    const match = trimmed.match(regex);
+    if (match && match[1]) return match[1];
+  }
+  return null;
+}
+
 function normalizeYouTubeUrl(rawUrl: string): string {
+  const id = extractYouTubeId(rawUrl);
+  if (id) return `https://m.youtube.com/watch?v=${id}`;
   const trimmed = rawUrl.trim();
   if (!trimmed) return '';
-  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{6,})/);
-  if (shortMatch) {
-    return `https://m.youtube.com/watch?v=${shortMatch[1]}`;
-  }
-  const watchMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{6,})/);
-  if (watchMatch) {
-    return `https://m.youtube.com/watch?v=${watchMatch[1]}`;
-  }
-  const shortsMatch = trimmed.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{6,})/);
-  if (shortsMatch) {
-    return `https://m.youtube.com/watch?v=${shortsMatch[1]}`;
-  }
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
@@ -74,14 +84,92 @@ function normalizeSiteUrl(rawUrl: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
-function LocalLessonVideo({ uri }: { uri: string }) {
+function formatTimestamp(totalSeconds: number): string {
+  const sec = Math.max(0, Math.floor(totalSeconds));
+  const hrs = Math.floor(sec / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  const rem = sec % 60;
+  if (hrs > 0) {
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')}`;
+}
+
+function buildYouTubeEmbedHtml(videoId: string): string {
+  const safeId = videoId.replace(/[^a-zA-Z0-9_-]/g, '');
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #player { width: 100%; height: 100%; background: #000; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    var ytPlayer;
+    function onYouTubeIframeAPIReady() {
+      ytPlayer = new YT.Player('player', {
+        width: '100%',
+        height: '100%',
+        videoId: '${safeId}',
+        playerVars: {
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
+          origin: 'https://www.youtube.com'
+        },
+        events: {
+          onStateChange: function() {
+            if (ytPlayer && ytPlayer.getCurrentTime && window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'YT_TIME',
+                time: ytPlayer.getCurrentTime()
+              }));
+            }
+          }
+        }
+      });
+    }
+    setInterval(function() {
+      if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === 1) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'YT_TIME',
+            time: ytPlayer.getCurrentTime()
+          }));
+        }
+      }
+    }, 1000);
+  </script>
+</body>
+</html>`;
+}
+
+function LocalLessonVideo({
+  uri,
+  onTimeUpdate,
+}: {
+  uri: string;
+  onTimeUpdate: (sec: number) => void;
+}) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = false;
   });
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      onTimeUpdate(player.currentTime ?? 0);
+    }, 800);
+    return () => clearInterval(timer);
+  }, [player, onTimeUpdate]);
+
   return (
     <VideoView
-      style={styles.videoBox}
+      style={styles.videoFill}
       player={player}
       nativeControls
       contentFit="contain"
@@ -100,11 +188,13 @@ export default function LessonPlayerView({
   onExportNotesToNexus,
 }: LessonPlayerViewProps) {
   const [activeTab, setActiveTab] = useState<LessonTab>('notes');
+  const [isPageMode, setIsPageMode] = useState(false);
+  const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
+  const [playbackSeconds, setPlaybackSeconds] = useState(0);
 
-  // Modal Adicionar / Trocar Vídeo ou Link
   const [mediaModalVisible, setMediaModalVisible] = useState(false);
   const [pickType, setPickType] = useState<LessonSourceType>(
-    lesson.sourceType === 'none' ? 'local' : lesson.sourceType
+    lesson.sourceType === 'none' ? 'youtube' : lesson.sourceType
   );
   const [urlInput, setUrlInput] = useState(
     lesson.sourceType === 'youtube' || lesson.sourceType === 'site'
@@ -112,19 +202,23 @@ export default function LessonPlayerView({
       : ''
   );
 
-  // Modal Nova Pergunta
   const [questionModalVisible, setQuestionModalVisible] = useState(false);
   const [newQuestionText, setNewQuestionText] = useState('');
 
-  // Modal Novo Link
   const [linkModalVisible, setLinkModalVisible] = useState(false);
   const [newLinkTitle, setNewLinkTitle] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
 
-  // Aba IA
   const [aiPrompt, setAiPrompt] = useState(
     `Explique de forma clara e com exemplos práticos o tema "${lesson.title}" (do curso ${courseTitle}).`
   );
+
+  const ytVideoId = useMemo(() => {
+    if (lesson.sourceType !== 'youtube' && !lesson.mediaUri.includes('youtu')) {
+      return null;
+    }
+    return extractYouTubeId(lesson.mediaUri);
+  }, [lesson.sourceType, lesson.mediaUri]);
 
   const handlePickLocalVideo = async () => {
     try {
@@ -162,11 +256,46 @@ export default function LessonPlayerView({
       Alert.alert('Link vazio', 'Cole o endereço do YouTube ou Site.');
       return;
     }
+    setIsPageMode(false);
+    setPlaybackSeconds(0);
     onUpdateLesson(lesson.id, {
       sourceType: pickType,
       mediaUri: clean,
     });
     setMediaModalVisible(false);
+  };
+
+  const handleWebMessage = (event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data) as {
+        type?: string;
+        time?: number;
+      };
+      if (data.type === 'YT_TIME' && typeof data.time === 'number') {
+        setPlaybackSeconds(data.time);
+      }
+    } catch {
+      // Ignora mensagens externas
+    }
+  };
+
+  const handleInsertTimestamp = () => {
+    const stamp = `[${formatTimestamp(playbackSeconds)}] `;
+    const cur = lesson.notes;
+    const prefix =
+      cur.length === 0 ? '' : cur.endsWith('\n') ? '' : '\n';
+    onUpdateLesson(lesson.id, {
+      notes: `${cur}${prefix}${stamp}`,
+    });
+  };
+
+  const handleOpenExternalYouTube = async () => {
+    if (!lesson.mediaUri) return;
+    try {
+      await Linking.openURL(lesson.mediaUri);
+    } catch {
+      onOpenInBrowser(lesson.mediaUri, lesson.title, 'youtube');
+    }
   };
 
   const handleAddQuestion = () => {
@@ -216,9 +345,11 @@ export default function LessonPlayerView({
     );
   };
 
+  const playerHeight = isPlayerExpanded ? 340 : 215;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* Header da Aula */}
+      {/* Header */}
       <View
         style={[
           styles.header,
@@ -263,20 +394,53 @@ export default function LessonPlayerView({
         </TouchableOpacity>
       </View>
 
-      {/* Player Escuro no Topo */}
+      {/* Player com altura fixa garantida */}
       <View style={styles.playerSection}>
         {lesson.sourceType === 'local' && lesson.mediaUri ? (
-          <LocalLessonVideo uri={lesson.mediaUri} />
+          <View style={[styles.playerFrame, { height: playerHeight }]}>
+            <LocalLessonVideo
+              uri={lesson.mediaUri}
+              onTimeUpdate={setPlaybackSeconds}
+            />
+          </View>
         ) : (lesson.sourceType === 'youtube' || lesson.sourceType === 'site') &&
           lesson.mediaUri ? (
-          <WebView
-            source={{ uri: lesson.mediaUri }}
-            style={styles.videoBox}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsFullscreenVideo
-            sharedCookiesEnabled
-          />
+          <View style={[styles.playerFrame, { height: playerHeight }]}>
+            {ytVideoId && !isPageMode ? (
+              <WebView
+                key={`yt-${ytVideoId}`}
+                source={{
+                  html: buildYouTubeEmbedHtml(ytVideoId),
+                  baseUrl: 'https://www.youtube.com',
+                }}
+                style={{ flex: 1, backgroundColor: '#000' }}
+                originWhitelist={['*']}
+                javaScriptEnabled
+                domStorageEnabled
+                allowsFullscreenVideo
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                sharedCookiesEnabled
+                onMessage={handleWebMessage}
+              />
+            ) : (
+              <WebView
+                key={`web-${lesson.mediaUri}-${isPageMode ? 'p' : 's'}`}
+                source={{ uri: lesson.mediaUri }}
+                style={{ flex: 1, backgroundColor: '#000' }}
+                javaScriptEnabled
+                domStorageEnabled
+                allowsFullscreenVideo
+                allowsInlineMediaPlayback
+                sharedCookiesEnabled
+                onShouldStartLoadWithRequest={(req) =>
+                  req.url.startsWith('http://') ||
+                  req.url.startsWith('https://') ||
+                  req.url === 'about:blank'
+                }
+              />
+            )}
+          </View>
         ) : (
           <View style={styles.emptyPlayer}>
             <Text style={{ color: '#E2E8F0', fontSize: 14, marginBottom: 14 }}>
@@ -285,7 +449,7 @@ export default function LessonPlayerView({
             <TouchableOpacity
               style={styles.addMediaBtn}
               onPress={() => {
-                setPickType('local');
+                setPickType('youtube');
                 setUrlInput('');
                 setMediaModalVisible(true);
               }}
@@ -297,43 +461,84 @@ export default function LessonPlayerView({
           </View>
         )}
 
+        {/* Barra de controles abaixo do player (igual ao print!) */}
         {lesson.sourceType !== 'none' && lesson.mediaUri ? (
-          <View style={styles.playerFooterBar}>
-            <TouchableOpacity
-              onPress={() => {
-                setPickType(lesson.sourceType);
-                setUrlInput(
-                  lesson.sourceType === 'local' ? '' : lesson.mediaUri
-                );
-                setMediaModalVisible(true);
-              }}
-            >
-              <Text style={{ color: '#94A3B8', fontSize: 12, fontWeight: '600' }}>
-                🔄 Trocar Vídeo / Link
-              </Text>
-            </TouchableOpacity>
+          <View
+            style={[
+              styles.playerControlRow,
+              {
+                backgroundColor: theme.surface,
+                borderBottomColor: theme.border,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              {ytVideoId && (
+                <TouchableOpacity
+                  onPress={() => setIsPageMode((p) => !p)}
+                  style={styles.playerCtrlBtn}
+                >
+                  <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '700' }}>
+                    ↻ {isPageMode ? 'Modo Player' : 'Modo Página'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-            {(lesson.sourceType === 'youtube' ||
-              lesson.sourceType === 'site') && (
+              {lesson.sourceType === 'youtube' ? (
+                <TouchableOpacity
+                  onPress={handleOpenExternalYouTube}
+                  style={styles.playerCtrlBtn}
+                >
+                  <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '700' }}>
+                    ↗ YouTube
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() =>
+                    onOpenInBrowser(
+                      lesson.mediaUri,
+                      lesson.title,
+                      lesson.sourceType
+                    )
+                  }
+                  style={styles.playerCtrlBtn}
+                >
+                  <Text style={{ color: '#2563EB', fontSize: 12, fontWeight: '700' }}>
+                    ↗ Navegador
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
-                onPress={() =>
-                  onOpenInBrowser(
-                    lesson.mediaUri,
-                    lesson.title,
-                    lesson.sourceType
-                  )
-                }
+                onPress={() => {
+                  setPickType(lesson.sourceType);
+                  setUrlInput(
+                    lesson.sourceType === 'local' ? '' : lesson.mediaUri
+                  );
+                  setMediaModalVisible(true);
+                }}
+                style={styles.playerCtrlBtn}
               >
-                <Text style={{ color: '#38BDF8', fontSize: 12, fontWeight: '700' }}>
-                  ⤢ Tela Cheia
+                <Text style={{ color: theme.textDim, fontSize: 12, fontWeight: '600' }}>
+                  Trocar
                 </Text>
               </TouchableOpacity>
-            )}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setIsPlayerExpanded((e) => !e)}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
+                {isPlayerExpanded ? '⤡' : '⛶'}
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </View>
 
-      {/* Barra de 4 Abas: Anotações | Perguntas | Links | IA */}
+      {/* 4 Abas */}
       <View
         style={[
           styles.tabsBar,
@@ -343,8 +548,20 @@ export default function LessonPlayerView({
         {(
           [
             { key: 'notes', label: 'Anotações' },
-            { key: 'questions', label: `Perguntas` },
-            { key: 'links', label: 'Links' },
+            {
+              key: 'questions',
+              label:
+                lesson.questions.length > 0
+                  ? `Perguntas (${lesson.questions.length})`
+                  : 'Perguntas',
+            },
+            {
+              key: 'links',
+              label:
+                lesson.links.length > 0
+                  ? `Links (${lesson.links.length})`
+                  : 'Links',
+            },
             { key: 'ai', label: 'IA' },
           ] as { key: LessonTab; label: string }[]
         ).map((tab) => {
@@ -374,10 +591,7 @@ export default function LessonPlayerView({
       </View>
 
       {/* Conteúdo das Abas */}
-      <ScrollView
-        style={styles.tabBody}
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView style={styles.tabBody} keyboardShouldPersistTaps="handled">
         {activeTab === 'notes' && (
           <View>
             <View style={styles.rowBetween}>
@@ -385,11 +599,22 @@ export default function LessonPlayerView({
                 Anotações da Aula
               </Text>
               <TouchableOpacity
-                onPress={() => onExportNotesToNexus(lesson)}
-                style={[styles.miniPill, { backgroundColor: theme.surfaceAlt }]}
+                onPress={handleInsertTimestamp}
+                style={[
+                  styles.timestampPill,
+                  {
+                    backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE',
+                  },
+                ]}
               >
-                <Text style={{ color: theme.accent, fontSize: 11, fontWeight: '700' }}>
-                  📄 Enviar p/ Espaços
+                <Text
+                  style={{
+                    color: theme.isDark ? '#D8B4FE' : '#31105E',
+                    fontSize: 12,
+                    fontWeight: '700',
+                  }}
+                >
+                  🕒 Marcar Tempo
                 </Text>
               </TouchableOpacity>
             </View>
@@ -410,6 +635,21 @@ export default function LessonPlayerView({
               placeholder="Escreva suas anotações aqui..."
               placeholderTextColor={theme.textDim}
             />
+
+            <TouchableOpacity
+              onPress={() => onExportNotesToNexus(lesson)}
+              style={[
+                styles.exportNotesBtn,
+                {
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '700' }}>
+                📄 Salvar Anotações nos Espaços do Nexus
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -422,9 +662,7 @@ export default function LessonPlayerView({
               <TouchableOpacity
                 style={[
                   styles.addPillBtn,
-                  {
-                    backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE',
-                  },
+                  { backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE' },
                 ]}
                 onPress={() => {
                   setNewQuestionText('');
@@ -542,9 +780,7 @@ export default function LessonPlayerView({
               <TouchableOpacity
                 style={[
                   styles.addPillBtn,
-                  {
-                    backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE',
-                  },
+                  { backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE' },
                 ]}
                 onPress={() => {
                   setNewLinkTitle('');
@@ -943,15 +1179,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   playerSection: {
-    backgroundColor: '#111827',
+    backgroundColor: '#000',
   },
-  videoBox: {
+  playerFrame: {
     width: '100%',
-    height: 215,
+    backgroundColor: '#000',
+  },
+  videoFill: {
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000',
   },
   emptyPlayer: {
-    height: 180,
+    height: 185,
     backgroundColor: '#162033',
     justifyContent: 'center',
     alignItems: 'center',
@@ -963,12 +1203,16 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 24,
   },
-  playerFooterBar: {
+  playerControlRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: '#0F172A',
+    borderBottomWidth: 1,
+  },
+  playerCtrlBtn: {
+    paddingVertical: 4,
   },
   tabsBar: {
     flexDirection: 'row',
@@ -993,6 +1237,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
   },
+  timestampPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 18,
+  },
   miniPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1008,9 +1257,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 14,
-    minHeight: 260,
+    minHeight: 230,
     fontSize: 15,
     lineHeight: 22,
+  },
+  exportNotesBtn: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
   },
   card: {
     borderWidth: 1,
