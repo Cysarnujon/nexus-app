@@ -19,6 +19,51 @@ export interface NodeSnapshot {
   createdAt: number;
 }
 
+export interface CourseItem {
+  id: string;
+  title: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface CourseModuleItem {
+  id: string;
+  courseId: string;
+  title: string;
+  sortOrder: number;
+  createdAt: number;
+}
+
+export interface LessonQuestion {
+  id: string;
+  question: string;
+  answer: string;
+  resolved: boolean;
+}
+
+export interface LessonLink {
+  id: string;
+  title: string;
+  url: string;
+}
+
+export type LessonSourceType = 'none' | 'local' | 'youtube' | 'site';
+
+export interface CourseLessonItem {
+  id: string;
+  moduleId: string;
+  courseId: string;
+  title: string;
+  sourceType: LessonSourceType;
+  mediaUri: string;
+  isCompleted: boolean;
+  notes: string;
+  questions: LessonQuestion[];
+  links: LessonLink[];
+  sortOrder: number;
+  createdAt: number;
+}
+
 interface NodeRow {
   id: string;
   parent_id: string | null;
@@ -35,6 +80,36 @@ interface SnapshotRow {
   node_id: string;
   title: string;
   content: string;
+  created_at: number;
+}
+
+interface CourseRow {
+  id: string;
+  title: string;
+  sort_order: number;
+  created_at: number;
+}
+
+interface ModuleRow {
+  id: string;
+  course_id: string;
+  title: string;
+  sort_order: number;
+  created_at: number;
+}
+
+interface LessonRow {
+  id: string;
+  module_id: string;
+  course_id: string;
+  title: string;
+  source_type: string;
+  media_uri: string;
+  is_completed: number;
+  notes: string;
+  questions_json: string;
+  links_json: string;
+  sort_order: number;
   created_at: number;
 }
 
@@ -123,6 +198,39 @@ function mapRowToNode(row: NodeRow): NexusNode {
   };
 }
 
+function safeParseJsonArray<T>(raw: string): T[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function mapRowToLesson(row: LessonRow): CourseLessonItem {
+  const validSource: LessonSourceType =
+    row.source_type === 'local' ||
+    row.source_type === 'youtube' ||
+    row.source_type === 'site'
+      ? row.source_type
+      : 'none';
+
+  return {
+    id: row.id,
+    moduleId: row.module_id,
+    courseId: row.course_id,
+    title: row.title,
+    sourceType: validSource,
+    mediaUri: row.media_uri,
+    isCompleted: row.is_completed === 1,
+    notes: row.notes,
+    questions: safeParseJsonArray<LessonQuestion>(row.questions_json),
+    links: safeParseJsonArray<LessonLink>(row.links_json),
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+  };
+}
+
 export function initDatabase(): void {
   db.execSync(`
     PRAGMA journal_mode = WAL;
@@ -145,6 +253,33 @@ export function initDatabase(): void {
       node_id TEXT NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS courses (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS course_modules (
+      id TEXT PRIMARY KEY NOT NULL,
+      course_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS course_lessons (
+      id TEXT PRIMARY KEY NOT NULL,
+      module_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'none',
+      media_uri TEXT NOT NULL DEFAULT '',
+      is_completed INTEGER NOT NULL DEFAULT 0,
+      notes TEXT NOT NULL DEFAULT '',
+      questions_json TEXT NOT NULL DEFAULT '[]',
+      links_json TEXT NOT NULL DEFAULT '[]',
+      sort_order INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
   `);
@@ -361,14 +496,260 @@ export function getNodeSnapshots(nodeId: string): NodeSnapshot[] {
   }));
 }
 
+// ==========================================
+// MEUS CURSOS (CURSOS -> MÓDULOS -> AULAS)
+// ==========================================
+
+export function getAllCourses(): CourseItem[] {
+  const rows = db.getAllSync<CourseRow>(
+    'SELECT * FROM courses ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }));
+}
+
+export function insertCourse(title: string): CourseItem {
+  const now = Date.now();
+  const id = `crs-${now}-${Math.floor(Math.random() * 10000)}`;
+  const maxRow = db.getFirstSync<MaxOrderRow>(
+    'SELECT MAX(sort_order) AS max_order FROM courses'
+  );
+  const sortOrder =
+    maxRow && maxRow.max_order !== null ? maxRow.max_order + 1 : 0;
+
+  db.runSync(
+    'INSERT INTO courses (id, title, sort_order, created_at) VALUES (?, ?, ?, ?)',
+    [id, title, sortOrder, now]
+  );
+
+  return { id, title, sortOrder, createdAt: now };
+}
+
+export function renameCourse(id: string, title: string): void {
+  db.runSync('UPDATE courses SET title = ? WHERE id = ?', [title, id]);
+}
+
+export function swapCourseOrder(
+  idA: string,
+  orderA: number,
+  idB: string,
+  orderB: number
+): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE courses SET sort_order = ? WHERE id = ?', [orderB, idA]);
+    db.runSync('UPDATE courses SET sort_order = ? WHERE id = ?', [orderA, idB]);
+  });
+}
+
+export function deleteCourseCascade(courseId: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM course_lessons WHERE course_id = ?', [courseId]);
+    db.runSync('DELETE FROM course_modules WHERE course_id = ?', [courseId]);
+    db.runSync('DELETE FROM courses WHERE id = ?', [courseId]);
+  });
+}
+
+export function getAllCourseModules(): CourseModuleItem[] {
+  const rows = db.getAllSync<ModuleRow>(
+    'SELECT * FROM course_modules ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    courseId: r.course_id,
+    title: r.title,
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }));
+}
+
+export function insertCourseModule(
+  courseId: string,
+  title: string
+): CourseModuleItem {
+  const now = Date.now();
+  const id = `mod-${now}-${Math.floor(Math.random() * 10000)}`;
+  const maxRow = db.getFirstSync<MaxOrderRow>(
+    'SELECT MAX(sort_order) AS max_order FROM course_modules WHERE course_id = ?',
+    [courseId]
+  );
+  const sortOrder =
+    maxRow && maxRow.max_order !== null ? maxRow.max_order + 1 : 0;
+
+  db.runSync(
+    'INSERT INTO course_modules (id, course_id, title, sort_order, created_at) VALUES (?, ?, ?, ?, ?)',
+    [id, courseId, title, sortOrder, now]
+  );
+
+  return { id, courseId, title, sortOrder, createdAt: now };
+}
+
+export function renameCourseModule(id: string, title: string): void {
+  db.runSync('UPDATE course_modules SET title = ? WHERE id = ?', [title, id]);
+}
+
+export function swapCourseModuleOrder(
+  idA: string,
+  orderA: number,
+  idB: string,
+  orderB: number
+): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE course_modules SET sort_order = ? WHERE id = ?', [
+      orderB,
+      idA,
+    ]);
+    db.runSync('UPDATE course_modules SET sort_order = ? WHERE id = ?', [
+      orderA,
+      idB,
+    ]);
+  });
+}
+
+export function deleteCourseModuleCascade(moduleId: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM course_lessons WHERE module_id = ?', [moduleId]);
+    db.runSync('DELETE FROM course_modules WHERE id = ?', [moduleId]);
+  });
+}
+
+export function getAllCourseLessons(): CourseLessonItem[] {
+  const rows = db.getAllSync<LessonRow>(
+    'SELECT * FROM course_lessons ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(mapRowToLesson);
+}
+
+export function insertCourseLesson(params: {
+  moduleId: string;
+  courseId: string;
+  title: string;
+  sourceType: LessonSourceType;
+  mediaUri: string;
+}): CourseLessonItem {
+  const now = Date.now();
+  const id = `les-${now}-${Math.floor(Math.random() * 10000)}`;
+  const maxRow = db.getFirstSync<MaxOrderRow>(
+    'SELECT MAX(sort_order) AS max_order FROM course_lessons WHERE module_id = ?',
+    [params.moduleId]
+  );
+  const sortOrder =
+    maxRow && maxRow.max_order !== null ? maxRow.max_order + 1 : 0;
+
+  db.runSync(
+    `INSERT INTO course_lessons (id, module_id, course_id, title, source_type, media_uri, is_completed, notes, questions_json, links_json, sort_order, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, '', '[]', '[]', ?, ?)`,
+    [
+      id,
+      params.moduleId,
+      params.courseId,
+      params.title,
+      params.sourceType,
+      params.mediaUri,
+      sortOrder,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    moduleId: params.moduleId,
+    courseId: params.courseId,
+    title: params.title,
+    sourceType: params.sourceType,
+    mediaUri: params.mediaUri,
+    isCompleted: false,
+    notes: '',
+    questions: [],
+    links: [],
+    sortOrder,
+    createdAt: now,
+  };
+}
+
+export function updateCourseLesson(
+  id: string,
+  patch: Partial<
+    Pick<
+      CourseLessonItem,
+      | 'title'
+      | 'sourceType'
+      | 'mediaUri'
+      | 'isCompleted'
+      | 'notes'
+      | 'questions'
+      | 'links'
+    >
+  >
+): void {
+  const row = db.getFirstSync<LessonRow>(
+    'SELECT * FROM course_lessons WHERE id = ?',
+    [id]
+  );
+  if (!row) return;
+  const current = mapRowToLesson(row);
+
+  const nextTitle = patch.title ?? current.title;
+  const nextSource = patch.sourceType ?? current.sourceType;
+  const nextUri = patch.mediaUri ?? current.mediaUri;
+  const nextCompleted =
+    patch.isCompleted !== undefined ? patch.isCompleted : current.isCompleted;
+  const nextNotes = patch.notes ?? current.notes;
+  const nextQuestions = patch.questions ?? current.questions;
+  const nextLinks = patch.links ?? current.links;
+
+  db.runSync(
+    `UPDATE course_lessons
+     SET title = ?, source_type = ?, media_uri = ?, is_completed = ?, notes = ?, questions_json = ?, links_json = ?
+     WHERE id = ?`,
+    [
+      nextTitle,
+      nextSource,
+      nextUri,
+      nextCompleted ? 1 : 0,
+      nextNotes,
+      JSON.stringify(nextQuestions),
+      JSON.stringify(nextLinks),
+      id,
+    ]
+  );
+}
+
+export function swapCourseLessonOrder(
+  idA: string,
+  orderA: number,
+  idB: string,
+  orderB: number
+): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE course_lessons SET sort_order = ? WHERE id = ?', [
+      orderB,
+      idA,
+    ]);
+    db.runSync('UPDATE course_lessons SET sort_order = ? WHERE id = ?', [
+      orderA,
+      idB,
+    ]);
+  });
+}
+
+export function deleteCourseLesson(id: string): void {
+  db.runSync('DELETE FROM course_lessons WHERE id = ?', [id]);
+}
+
 export function exportBackupJson(): string {
-  const nodes = getAllNodes();
   return JSON.stringify(
     {
       app: 'Nexus',
-      version: 6,
+      version: 9,
       exportedAt: Date.now(),
-      nodes,
+      nodes: getAllNodes(),
+      courses: getAllCourses(),
+      courseModules: getAllCourseModules(),
+      courseLessons: getAllCourseLessons(),
     },
     null,
     2
@@ -376,7 +757,12 @@ export function exportBackupJson(): string {
 }
 
 export function importBackupJson(rawJson: string): number {
-  const parsed = JSON.parse(rawJson) as { nodes?: unknown };
+  const parsed = JSON.parse(rawJson) as {
+    nodes?: unknown;
+    courses?: unknown;
+    courseModules?: unknown;
+    courseLessons?: unknown;
+  };
   if (!parsed || !Array.isArray(parsed.nodes)) {
     throw new Error('Formato inválido: campo "nodes" não encontrado.');
   }
@@ -416,6 +802,50 @@ export function importBackupJson(rawJson: string): number {
         ]
       );
       count += 1;
+    }
+
+    if (Array.isArray(parsed.courses)) {
+      for (const c of parsed.courses as Partial<CourseItem>[]) {
+        if (!c || typeof c.id !== 'string' || typeof c.title !== 'string') continue;
+        db.runSync(
+          `INSERT OR REPLACE INTO courses (id, title, sort_order, created_at) VALUES (?, ?, ?, ?)`,
+          [c.id, c.title, c.sortOrder ?? 0, c.createdAt ?? Date.now()]
+        );
+      }
+    }
+
+    if (Array.isArray(parsed.courseModules)) {
+      for (const m of parsed.courseModules as Partial<CourseModuleItem>[]) {
+        if (!m || typeof m.id !== 'string' || typeof m.courseId !== 'string' || typeof m.title !== 'string') continue;
+        db.runSync(
+          `INSERT OR REPLACE INTO course_modules (id, course_id, title, sort_order, created_at) VALUES (?, ?, ?, ?, ?)`,
+          [m.id, m.courseId, m.title, m.sortOrder ?? 0, m.createdAt ?? Date.now()]
+        );
+      }
+    }
+
+    if (Array.isArray(parsed.courseLessons)) {
+      for (const l of parsed.courseLessons as Partial<CourseLessonItem>[]) {
+        if (!l || typeof l.id !== 'string' || typeof l.moduleId !== 'string' || typeof l.courseId !== 'string' || typeof l.title !== 'string') continue;
+        db.runSync(
+          `INSERT OR REPLACE INTO course_lessons (id, module_id, course_id, title, source_type, media_uri, is_completed, notes, questions_json, links_json, sort_order, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            l.id,
+            l.moduleId,
+            l.courseId,
+            l.title,
+            l.sourceType ?? 'none',
+            l.mediaUri ?? '',
+            l.isCompleted ? 1 : 0,
+            l.notes ?? '',
+            JSON.stringify(l.questions ?? []),
+            JSON.stringify(l.links ?? []),
+            l.sortOrder ?? 0,
+            l.createdAt ?? Date.now(),
+          ]
+        );
+      }
     }
   });
 
