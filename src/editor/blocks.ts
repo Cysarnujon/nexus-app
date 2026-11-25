@@ -32,7 +32,12 @@ export type BlockType =
   | 'timeline'
   | 'toc'
   | 'button'
-  | 'bookmark';
+  | 'bookmark'
+  | 'image'
+  | 'gallery'
+  | 'video'
+  | 'audio'
+  | 'file';
 
 export type BlockColor =
   | 'default'
@@ -103,6 +108,11 @@ export interface EditorBlock {
   timelineData?: TimelineItem[];
   url?: string;
   buttonAction?: 'url' | 'note' | 'todo';
+  mediaUri?: string;
+  mediaName?: string;
+  mediaSize?: number;
+  mediaMime?: string;
+  galleryUris?: string[];
 }
 
 export interface EditorTheme {
@@ -232,6 +242,7 @@ export function createBlock(
         : undefined,
     url: type === 'bookmark' ? 'https://' : type === 'button' ? '' : undefined,
     buttonAction: type === 'button' ? 'todo' : undefined,
+    galleryUris: type === 'gallery' ? [] : undefined,
     ...extra,
   };
 }
@@ -334,6 +345,14 @@ export function extractPlainTextFromContent(content: string): string {
             if (b.type === 'definition') {
               return `${b.defTerm ?? ''}: ${b.text}`;
             }
+            if (
+              b.type === 'image' ||
+              b.type === 'video' ||
+              b.type === 'audio' ||
+              b.type === 'file'
+            ) {
+              return [b.mediaName ?? '', b.text].filter(Boolean).join(' ');
+            }
             if (b.toggleBody) {
               return `${b.text}\n${b.toggleBody}`;
             }
@@ -433,6 +452,21 @@ export function blocksToMarkdown(title: string, rawContent: string): string {
       case 'bookmark':
         lines.push(`[${b.text || b.url || 'Link'}](${b.url || ''})`);
         break;
+      case 'image':
+        lines.push(`![${b.text || b.mediaName || 'Imagem'}](${b.mediaUri ?? ''})`);
+        break;
+      case 'gallery':
+        lines.push(`🖼️ **Galeria:** ${(b.galleryUris ?? []).length} imagem(ns) ${b.text}`);
+        break;
+      case 'video':
+        lines.push(`🎬 **Vídeo:** ${b.text || b.mediaName || 'Anexo'}`);
+        break;
+      case 'audio':
+        lines.push(`🎙 **Áudio:** ${b.text || b.mediaName || 'Nota de voz'}`);
+        break;
+      case 'file':
+        lines.push(`📎 **Arquivo:** ${b.mediaName || b.text || 'Documento'}`);
+        break;
       case 'table': {
         const rows = b.tableData ?? [];
         if (rows.length > 0) {
@@ -519,6 +553,16 @@ export interface BlockCategory {
 
 export const BLOCK_CATEGORIES: BlockCategory[] = [
   {
+    title: 'Mídia e Arquivos do Celular',
+    items: [
+      { type: 'image', label: 'Imagem / Foto', icon: '🖼️', hint: 'Galeria ou Câmera' },
+      { type: 'gallery', label: 'Galeria de Fotos', icon: '🗂', hint: 'Várias imagens' },
+      { type: 'video', label: 'Vídeo', icon: '🎬', hint: 'Reproduzir na nota' },
+      { type: 'audio', label: 'Áudio / Voz', icon: '🎙', hint: 'Gravar ou anexar áudio' },
+      { type: 'file', label: 'Arquivo / PDF', icon: '📎', hint: 'PDF, DOC, anexos...' },
+    ],
+  },
+  {
     title: 'Blocos Básicos e Títulos',
     items: [
       { type: 'paragraph', label: 'Texto Normal', icon: '¶', hint: 'Parágrafo padrão' },
@@ -556,7 +600,7 @@ export const BLOCK_CATEGORIES: BlockCategory[] = [
       { type: 'math', label: 'Equação Matemática', icon: '∑', hint: 'Atalho: $$' },
       { type: 'footnote', label: 'Nota de Rodapé', icon: '1_', hint: 'Referência inferior' },
       { type: 'divider', label: 'Divisor Horizontal', icon: '—', hint: 'Atalho: ---' },
-      { type: 'pagebreak', label: 'Quebra de Página', icon: '⤓', hint: 'Separador de seção' },
+      { type: 'pagebreak', label: 'Quebra de Página', icon: '⤓', hint: 'Separador para PDF' },
     ],
   },
   {
