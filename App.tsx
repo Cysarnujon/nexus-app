@@ -37,6 +37,11 @@ import {
 import BlockEditor from './src/components/BlockEditor';
 import GraphView from './src/components/GraphView';
 import { TagsView, TasksView } from './src/components/BrainViews';
+import HomeSearchView, {
+  SavedSearchItem,
+  SearchSource,
+} from './src/components/HomeSearchView';
+import InAppBrowser from './src/components/InAppBrowser';
 import {
   DARK_THEME,
   DEFAULT_EDITOR_PREFS,
@@ -47,13 +52,23 @@ import {
   ToolbarToolId,
   blocksToMarkdown,
   buildTemplateContent,
+  createBlock,
   extractPlainTextFromContent,
   parseContentToBlocks,
   serializeBlocks,
 } from './src/editor/blocks';
 import { exportNoteToPdf, printNote } from './src/utils/media';
 
-type MainTab = 'spaces' | 'graph' | 'tags' | 'tasks' | 'search';
+type MainTab = 'home' | 'spaces' | 'graph' | 'tags' | 'tasks';
+
+interface BrowserSession {
+  url: string;
+  title: string;
+  sourceId: string;
+  sourceName: string;
+  sourceIcon: string;
+  query: string;
+}
 
 function extractTags(rawContent: string): string[] {
   const plain = extractPlainTextFromContent(rawContent);
@@ -90,6 +105,15 @@ function formatDateTime(timestamp: number): string {
   return `${day}/${month} às ${hh}:${mm}`;
 }
 
+function normalizeTagsString(raw: string): string {
+  const tokens = raw
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (t.startsWith('#') ? t : `#${t}`));
+  return Array.from(new Set(tokens)).join(' ');
+}
+
 function getDescendantIds(allNodes: NexusNode[], rootId: string): string[] {
   const result: string[] = [];
   const queue: string[] = [rootId];
@@ -107,9 +131,8 @@ function getDescendantIds(allNodes: NexusNode[], rootId: string): string[] {
 
 export default function App() {
   const [nodes, setNodes] = useState<NexusNode[]>([]);
-  const [activeTab, setActiveTab] = useState<MainTab>('spaces');
+  const [activeTab, setActiveTab] = useState<MainTab>('home');
   const [pageHistory, setPageHistory] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [editorPrefs, setEditorPrefs] = useState<EditorPrefs>(
@@ -119,6 +142,14 @@ export default function App() {
     DEFAULT_TOOLBAR_IDS
   );
   const [isZenMode, setIsZenMode] = useState(false);
+
+  // Pesquisa Multi-Fontes e Browser Interno
+  const [customSources, setCustomSources] = useState<SearchSource[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedSearchItem[]>([]);
+  const [recentSearches, setRecentSearches] = useState<SavedSearchItem[]>([]);
+  const [browserSession, setBrowserSession] = useState<BrowserSession | null>(
+    null
+  );
 
   const [newTopicModalVisible, setNewTopicModalVisible] = useState(false);
   const [newTopicParentId, setNewTopicParentId] = useState<string | null>(null);
@@ -158,6 +189,21 @@ export default function App() {
           setToolbarIds(parsedIds);
         }
       }
+
+      const rawSources = getAppMeta('custom_sources');
+      if (rawSources) {
+        setCustomSources(JSON.parse(rawSources) as SearchSource[]);
+      }
+
+      const rawSaved = getAppMeta('saved_searches');
+      if (rawSaved) {
+        setSavedSearches(JSON.parse(rawSaved) as SavedSearchItem[]);
+      }
+
+      const rawRecent = getAppMeta('recent_searches');
+      if (rawRecent) {
+        setRecentSearches(JSON.parse(rawRecent) as SavedSearchItem[]);
+      }
     } catch (error) {
       Alert.alert('Erro ao abrir banco', String(error));
     }
@@ -183,6 +229,9 @@ export default function App() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (browserSession) {
+        return false;
+      }
       if (backupModalVisible) {
         setBackupModalVisible(false);
         return true;
@@ -211,8 +260,8 @@ export default function App() {
         setPageHistory((prev) => prev.slice(0, -1));
         return true;
       }
-      if (activeTab !== 'spaces') {
-        setActiveTab('spaces');
+      if (activeTab !== 'home') {
+        setActiveTab('home');
         return true;
       }
       return false;
@@ -220,6 +269,7 @@ export default function App() {
 
     return () => subscription.remove();
   }, [
+    browserSession,
     backupModalVisible,
     historyModalNodeId,
     moveNodeId,
@@ -244,6 +294,134 @@ export default function App() {
   const handleToolbarChange = (nextIds: ToolbarToolId[]) => {
     setToolbarIds(nextIds);
     setAppMeta('toolbar_config', JSON.stringify(nextIds));
+  };
+
+  const handleAddCustomSource = (src: SearchSource) => {
+    const next = [...customSources, src];
+    setCustomSources(next);
+    setAppMeta('custom_sources', JSON.stringify(next));
+  };
+
+  const handleDeleteCustomSource = (id: string) => {
+    const next = customSources.filter((s) => s.id !== id);
+    setCustomSources(next);
+    setAppMeta('custom_sources', JSON.stringify(next));
+  };
+
+  const handleSaveSearch = (item: SavedSearchItem) => {
+    const next = [
+      item,
+      ...savedSearches.filter(
+        (s) => !(s.url === item.url && s.query === item.query)
+      ),
+    ];
+    setSavedSearches(next);
+    setAppMeta('saved_searches', JSON.stringify(next));
+  };
+
+  const handleDeleteSavedSearch = (id: string) => {
+    const next = savedSearches.filter((s) => s.id !== id);
+    setSavedSearches(next);
+    setAppMeta('saved_searches', JSON.stringify(next));
+  };
+
+  const handleClearRecentSearches = () => {
+    setRecentSearches([]);
+    setAppMeta('recent_searches', '[]');
+  };
+
+  const handleOpenWebUrl = (
+    url: string,
+    title: string,
+    source: SearchSource,
+    query: string
+  ) => {
+    if (query.trim()) {
+      const rec: SavedSearchItem = {
+        id: `rec-${Date.now()}`,
+        query: query.trim(),
+        sourceId: source.id,
+        sourceName: source.name,
+        sourceIcon: source.icon,
+        url,
+        createdAt: Date.now(),
+      };
+      const nextRecent = [
+        rec,
+        ...recentSearches.filter(
+          (r) =>
+            !(
+              r.query.toLowerCase() === rec.query.toLowerCase() &&
+              r.sourceId === rec.sourceId
+            )
+        ),
+      ].slice(0, 10);
+      setRecentSearches(nextRecent);
+      setAppMeta('recent_searches', JSON.stringify(nextRecent));
+    }
+
+    setBrowserSession({
+      url,
+      title,
+      sourceId: source.id,
+      sourceName: source.name,
+      sourceIcon: source.icon,
+      query,
+    });
+  };
+
+  const handleSaveLinkToSpace = (params: {
+    title: string;
+    url: string;
+    targetNodeId: string | null;
+    mode: 'new_page' | 'append_block';
+    tagsText: string;
+  }) => {
+    const cleanTags = normalizeTagsString(params.tagsText);
+    const linkBlock = createBlock('bookmark', params.title, { url: params.url });
+    const blocksToAdd = cleanTags
+      ? [linkBlock, createBlock('paragraph', cleanTags)]
+      : [linkBlock];
+
+    if (params.mode === 'append_block' && params.targetNodeId) {
+      const target = nodes.find((n) => n.id === params.targetNodeId);
+      if (target) {
+        const existingBlocks = parseContentToBlocks(target.content);
+        const merged = [...existingBlocks, ...blocksToAdd];
+        const serialized = serializeBlocks(merged);
+        const updatedAt = updateNodeContent(target.id, target.title, serialized);
+        setNodes((prev) =>
+          prev.map((n) =>
+            n.id === target.id
+              ? { ...n, content: serialized, updatedAt }
+              : n
+          )
+        );
+        setEditorRefreshKey((k) => k + 1);
+        return;
+      }
+    }
+
+    const created = insertNode({
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      parentId: params.targetNodeId,
+      title: params.title,
+      content: serializeBlocks(blocksToAdd),
+      isExpanded: true,
+      isFavorite: false,
+    });
+
+    if (params.targetNodeId) {
+      setNodeExpanded(params.targetNodeId, true);
+    }
+
+    setNodes((prev) =>
+      prev
+        .map((n) =>
+          n.id === params.targetNodeId ? { ...n, isExpanded: true } : n
+        )
+        .concat(created)
+    );
   };
 
   const openPage = (id: string) => {
@@ -643,15 +821,6 @@ export default function App() {
     () => nodes.map((n) => n.title),
     [nodes]
   );
-
-  const filteredSearchNodes = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return nodes;
-    return nodes.filter((n) => {
-      const plain = extractPlainTextFromContent(n.content).toLowerCase();
-      return n.title.toLowerCase().includes(q) || plain.includes(q);
-    });
-  }, [nodes, searchQuery]);
 
   const invalidMoveTargets = useMemo(() => {
     if (!moveNode) return new Set<string>();
@@ -1158,6 +1327,38 @@ export default function App() {
     );
   }
 
+  // Se o Navegador Interno estiver aberto
+  if (browserSession) {
+    return (
+      <>
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+        <InAppBrowser
+          initialUrl={browserSession.url}
+          initialTitle={browserSession.title}
+          sourceId={browserSession.sourceId}
+          sourceName={browserSession.sourceName}
+          sourceIcon={browserSession.sourceIcon}
+          initialQuery={browserSession.query}
+          nodes={nodes}
+          theme={theme}
+          onClose={() => setBrowserSession(null)}
+          onSaveSearchBookmark={(params) =>
+            handleSaveSearch({
+              id: `sv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              query: params.query,
+              sourceId: params.sourceId,
+              sourceName: params.sourceName,
+              sourceIcon: params.sourceIcon,
+              url: params.url,
+              createdAt: Date.now(),
+            })
+          }
+          onSaveLinkToSpace={handleSaveLinkToSpace}
+        />
+      </>
+    );
+  }
+
   if (selectedNode) {
     const breadcrumbs = getBreadcrumbs(selectedNode);
     const subpages = nodes
@@ -1411,7 +1612,7 @@ export default function App() {
         <View>
           <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
           <Text style={[styles.subtitle, { color: theme.textDim }]}>
-            v0.7 • Segundo Cérebro ({nodes.length} notas)
+            v0.8 • Segundo Cérebro ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -1450,6 +1651,23 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {activeTab === 'home' && (
+        <HomeSearchView
+          nodes={nodes}
+          theme={theme}
+          customSources={customSources}
+          savedSearches={savedSearches}
+          recentSearches={recentSearches}
+          onAddCustomSource={handleAddCustomSource}
+          onDeleteCustomSource={handleDeleteCustomSource}
+          onOpenWebUrl={handleOpenWebUrl}
+          onSaveSearch={handleSaveSearch}
+          onDeleteSavedSearch={handleDeleteSavedSearch}
+          onClearRecentSearches={handleClearRecentSearches}
+          onOpenNode={openPage}
+        />
+      )}
 
       {activeTab === 'spaces' && (
         <ScrollView style={styles.scrollArea}>
@@ -1509,7 +1727,7 @@ export default function App() {
             </View>
           )}
           <Text style={[styles.tipText, { color: theme.textDim }]}>
-            Novidade v0.7: Anexe Fotos, Galeria, Vídeos, Áudios/Voz, PDFs e exporte qualquer nota em PDF real pelo menu ⋯!
+            Pesquise na aba Início dentro do próprio APK e segure links para direcionar aos seus Espaços com #tags!
           </Text>
         </ScrollView>
       )}
@@ -1530,54 +1748,6 @@ export default function App() {
         />
       )}
 
-      {activeTab === 'search' && (
-        <View style={styles.scrollArea}>
-          <TextInput
-            style={[
-              styles.searchInput,
-              {
-                backgroundColor: theme.surface,
-                borderColor: theme.border,
-                color: theme.text,
-              },
-            ]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Buscar notas, #tags, tabelas, anexos..."
-            placeholderTextColor={theme.textDim}
-            autoFocus
-          />
-          <ScrollView>
-            {filteredSearchNodes.map((node) => (
-              <TouchableOpacity
-                key={node.id}
-                style={[
-                  styles.searchResultCard,
-                  {
-                    backgroundColor: theme.surface,
-                    borderColor: theme.border,
-                  },
-                ]}
-                onPress={() => openPage(node.id)}
-              >
-                <Text
-                  style={[styles.searchResultTitle, { color: theme.text }]}
-                >
-                  {node.isFavorite ? '★ ' : ''}
-                  {node.title}
-                </Text>
-                <Text
-                  style={[styles.searchResultSnippet, { color: theme.textDim }]}
-                  numberOfLines={2}
-                >
-                  {extractPlainTextFromContent(node.content)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
       <View
         style={[
           styles.bottomBar,
@@ -1586,11 +1756,11 @@ export default function App() {
       >
         {(
           [
+            { key: 'home', icon: '🏠', label: 'Início' },
             { key: 'spaces', icon: '☰', label: 'Espaços' },
             { key: 'graph', icon: '🕸', label: 'Grafo' },
             { key: 'tags', icon: '#', label: 'Tags' },
             { key: 'tasks', icon: '☑', label: 'Tarefas' },
-            { key: 'search', icon: '⌕', label: 'Busca' },
           ] as { key: MainTab; icon: string; label: string }[]
         ).map((tab) => {
           const active = activeTab === tab.key;
@@ -1887,29 +2057,6 @@ const styles = StyleSheet.create({
     color: '#7DD3FC',
     fontSize: 12,
     fontWeight: '600',
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    marginBottom: 14,
-  },
-  searchResultCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
-  },
-  searchResultTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  searchResultSnippet: {
-    fontSize: 13,
-    lineHeight: 18,
   },
   modalBackdrop: {
     flex: 1,
