@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   ScrollView,
+  Share,
   StatusBar as RNStatusBar,
   StyleSheet,
   Text,
@@ -15,10 +16,15 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import {
   NexusNode,
+  NodeSnapshot,
   deleteNodesByIds,
+  exportBackupJson,
   getAllNodes,
+  getNodeSnapshots,
+  importBackupJson,
   initDatabase,
   insertNode,
+  saveNodeSnapshot,
   setAllNodesExpanded,
   setNodeExpanded,
   setNodeFavorite,
@@ -30,6 +36,9 @@ import BlockEditor from './src/components/BlockEditor';
 import GraphView from './src/components/GraphView';
 import { TagsView, TasksView } from './src/components/BrainViews';
 import {
+  PAGE_TEMPLATES,
+  blocksToMarkdown,
+  buildTemplateContent,
   extractPlainTextFromContent,
   parseContentToBlocks,
   serializeBlocks,
@@ -63,6 +72,15 @@ function formatTime(timestamp: number): string {
   return `${hh}:${mm}`;
 }
 
+function formatDateTime(timestamp: number): string {
+  const d = new Date(timestamp);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month} às ${hh}:${mm}`;
+}
+
 function getDescendantIds(allNodes: NexusNode[], rootId: string): string[] {
   const result: string[] = [];
   const queue: string[] = [rootId];
@@ -87,9 +105,18 @@ export default function App() {
   const [newTopicModalVisible, setNewTopicModalVisible] = useState(false);
   const [newTopicParentId, setNewTopicParentId] = useState<string | null>(null);
   const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('blank');
 
   const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
   const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
+
+  const [historyModalNodeId, setHistoryModalNodeId] = useState<string | null>(
+    null
+  );
+  const [snapshots, setSnapshots] = useState<NodeSnapshot[]>([]);
+  const [editorRefreshKey, setEditorRefreshKey] = useState(0);
+  const [backupModalVisible, setBackupModalVisible] = useState(false);
+  const [backupJsonInput, setBackupJsonInput] = useState('');
 
   useEffect(() => {
     try {
@@ -120,6 +147,14 @@ export default function App() {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (backupModalVisible) {
+        setBackupModalVisible(false);
+        return true;
+      }
+      if (historyModalNodeId) {
+        setHistoryModalNodeId(null);
+        return true;
+      }
       if (moveNodeId) {
         setMoveNodeId(null);
         return true;
@@ -144,7 +179,15 @@ export default function App() {
     });
 
     return () => subscription.remove();
-  }, [moveNodeId, menuNodeId, newTopicModalVisible, pageHistory, activeTab]);
+  }, [
+    backupModalVisible,
+    historyModalNodeId,
+    moveNodeId,
+    menuNodeId,
+    newTopicModalVisible,
+    pageHistory,
+    activeTab,
+  ]);
 
   const openPage = (id: string) => {
     setPageHistory((prev) => {
@@ -182,6 +225,7 @@ export default function App() {
   const openCreateModal = (parentId: string | null) => {
     setNewTopicParentId(parentId);
     setNewTopicTitle('');
+    setSelectedTemplateId('blank');
     setNewTopicModalVisible(true);
   };
 
@@ -193,7 +237,7 @@ export default function App() {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       parentId: newTopicParentId,
       title: trimmed,
-      content: 'Escreva suas ideias aqui...\n- [ ] Primeira tarefa\n#nova',
+      content: buildTemplateContent(selectedTemplateId),
       isExpanded: true,
       isFavorite: false,
     });
@@ -315,6 +359,84 @@ export default function App() {
         .sort((a, b) => a.sortOrder - b.sortOrder)
     );
     setMoveNodeId(null);
+  };
+
+  const handleExportMarkdown = async (node: NexusNode) => {
+    try {
+      const md = blocksToMarkdown(node.title, node.content);
+      await Share.share({
+        title: `${node.title}.md`,
+        message: md,
+      });
+    } catch (error) {
+      Alert.alert('Erro ao exportar', String(error));
+    }
+  };
+
+  const handleSaveSnapshot = (node: NexusNode) => {
+    saveNodeSnapshot(node.id, node.title, node.content);
+    Alert.alert(
+      'Versão salva!',
+      `Um ponto de restauração de "${node.title}" foi salvo no histórico.`
+    );
+  };
+
+  const openSnapshotsHistory = (nodeId: string) => {
+    const list = getNodeSnapshots(nodeId);
+    setSnapshots(list);
+    setHistoryModalNodeId(nodeId);
+  };
+
+  const restoreSnapshot = (snap: NodeSnapshot) => {
+    Alert.alert(
+      'Restaurar versão',
+      `Substituir o conteúdo atual pela versão de ${formatDateTime(snap.createdAt)}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Restaurar',
+          onPress: () => {
+            handleEditPage(snap.nodeId, snap.title, snap.content);
+            setEditorRefreshKey((k) => k + 1);
+            setHistoryModalNodeId(null);
+            Alert.alert('Restaurado!', 'Versão anterior restaurada com sucesso.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleExportFullBackup = async () => {
+    try {
+      const json = exportBackupJson();
+      await Share.share({
+        title: 'nexus-backup.json',
+        message: json,
+      });
+    } catch (error) {
+      Alert.alert('Erro ao exportar backup', String(error));
+    }
+  };
+
+  const handleImportBackup = () => {
+    const trimmed = backupJsonInput.trim();
+    if (!trimmed) {
+      Alert.alert('Atenção', 'Cole o texto JSON do backup primeiro.');
+      return;
+    }
+    try {
+      const importedCount = importBackupJson(trimmed);
+      setNodes(getAllNodes());
+      setEditorRefreshKey((k) => k + 1);
+      setBackupJsonInput('');
+      setBackupModalVisible(false);
+      Alert.alert(
+        'Backup restaurado!',
+        `${importedCount} nota(s) importada(s) com sucesso para o Nexus.`
+      );
+    } catch (error) {
+      Alert.alert('Erro ao importar backup', String(error));
+    }
   };
 
   const getBreadcrumbs = (node: NexusNode): NexusNode[] => {
@@ -462,6 +584,37 @@ export default function App() {
                 placeholderTextColor="#64748B"
                 autoFocus
               />
+
+              <Text style={styles.templateHeading}>ESCOLHER MODELO:</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.templateRow}
+              >
+                {PAGE_TEMPLATES.map((tpl) => {
+                  const active = selectedTemplateId === tpl.id;
+                  return (
+                    <TouchableOpacity
+                      key={tpl.id}
+                      style={[
+                        styles.templateChip,
+                        active && styles.templateChipActive,
+                      ]}
+                      onPress={() => setSelectedTemplateId(tpl.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.templateChipText,
+                          active && styles.templateChipTextActive,
+                        ]}
+                      >
+                        {tpl.icon} {tpl.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   onPress={() => setNewTopicModalVisible(false)}
@@ -487,89 +640,132 @@ export default function App() {
           onRequestClose={() => setMenuNodeId(null)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalBox}>
+            <View style={[styles.modalBox, { maxHeight: '84%' }]}>
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {menuNode?.title}
               </Text>
 
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  if (!menuNode) return;
-                  const id = menuNode.id;
-                  setMenuNodeId(null);
-                  openPage(id);
-                }}
-              >
-                <Text style={styles.menuItemText}>📄 Abrir como página</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  if (!menuNode) return;
-                  const id = menuNode.id;
-                  setMenuNodeId(null);
-                  openCreateModal(id);
-                }}
-              >
-                <Text style={styles.menuItemText}>➕ Criar subtópico dentro</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  if (!menuNode) return;
-                  toggleFavorite(menuNode.id);
-                  setMenuNodeId(null);
-                }}
-              >
-                <Text style={styles.menuItemText}>
-                  {menuNode?.isFavorite
-                    ? '☆ Remover dos favoritos'
-                    : '★ Adicionar aos favoritos'}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.menuRowSplit}>
+              <ScrollView>
                 <TouchableOpacity
-                  style={styles.menuHalfBtn}
+                  style={styles.menuItem}
                   onPress={() => {
-                    if (menuNode) moveSibling(menuNode.id, 'up');
+                    if (!menuNode) return;
+                    const id = menuNode.id;
+                    setMenuNodeId(null);
+                    openPage(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>↑ Subir</Text>
+                  <Text style={styles.menuItemText}>📄 Abrir como página</Text>
                 </TouchableOpacity>
+
                 <TouchableOpacity
-                  style={styles.menuHalfBtn}
+                  style={styles.menuItem}
                   onPress={() => {
-                    if (menuNode) moveSibling(menuNode.id, 'down');
+                    if (!menuNode) return;
+                    const id = menuNode.id;
+                    setMenuNodeId(null);
+                    openCreateModal(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>↓ Descer</Text>
+                  <Text style={styles.menuItemText}>➕ Criar subtópico dentro</Text>
                 </TouchableOpacity>
-              </View>
 
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  if (!menuNode) return;
-                  const id = menuNode.id;
-                  setMenuNodeId(null);
-                  setMoveNodeId(id);
-                }}
-              >
-                <Text style={styles.menuItemText}>📁 Mover para outro local</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    toggleFavorite(menuNode.id);
+                    setMenuNodeId(null);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>
+                    {menuNode?.isFavorite
+                      ? '☆ Remover dos favoritos'
+                      : '★ Adicionar aos favoritos'}
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.menuItem, styles.menuDanger]}
-                onPress={() => {
-                  if (menuNode) confirmDeleteNode(menuNode);
-                }}
-              >
-                <Text style={styles.menuDangerText}>🗑 Excluir tópico</Text>
-              </TouchableOpacity>
+                <View style={styles.menuRowSplit}>
+                  <TouchableOpacity
+                    style={styles.menuHalfBtn}
+                    onPress={() => {
+                      if (menuNode) moveSibling(menuNode.id, 'up');
+                    }}
+                  >
+                    <Text style={styles.menuItemText}>↑ Subir</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.menuHalfBtn}
+                    onPress={() => {
+                      if (menuNode) moveSibling(menuNode.id, 'down');
+                    }}
+                  >
+                    <Text style={styles.menuItemText}>↓ Descer</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    const id = menuNode.id;
+                    setMenuNodeId(null);
+                    setMoveNodeId(id);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>📁 Mover para outro local</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    handleSaveSnapshot(menuNode);
+                    setMenuNodeId(null);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>
+                    💾 Salvar versão (Snapshot)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    const id = menuNode.id;
+                    setMenuNodeId(null);
+                    openSnapshotsHistory(id);
+                  }}
+                >
+                  <Text style={styles.menuItemText}>
+                    🕒 Histórico de versões
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    const target = menuNode;
+                    setMenuNodeId(null);
+                    handleExportMarkdown(target);
+                  }}
+                >
+                  <Text style={[styles.menuItemText, { color: '#7DD3FC' }]}>
+                    📤 Exportar como Markdown
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuDanger]}
+                  onPress={() => {
+                    if (menuNode) confirmDeleteNode(menuNode);
+                  }}
+                >
+                  <Text style={styles.menuDangerText}>🗑 Excluir tópico</Text>
+                </TouchableOpacity>
+              </ScrollView>
 
               <TouchableOpacity
                 style={styles.menuCloseBtn}
@@ -621,6 +817,100 @@ export default function App() {
               >
                 <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={!!historyModalNodeId}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setHistoryModalNodeId(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalBox, { maxHeight: '75%' }]}>
+              <Text style={styles.modalTitle}>🕒 Histórico de Versões</Text>
+              {snapshots.length === 0 ? (
+                <Text style={styles.emptyHint}>
+                  Nenhuma versão salva para esta nota ainda. Use "Salvar versão (Snapshot)" no menu ⋯ antes de fazer grandes mudanças!
+                </Text>
+              ) : (
+                <ScrollView>
+                  {snapshots.map((snap) => (
+                    <TouchableOpacity
+                      key={snap.id}
+                      style={styles.menuItem}
+                      onPress={() => restoreSnapshot(snap)}
+                    >
+                      <Text style={styles.menuItemText}>
+                        ↺ {formatDateTime(snap.createdAt)}
+                      </Text>
+                      <Text style={styles.snapPreview} numberOfLines={1}>
+                        {snap.title} — {extractPlainTextFromContent(snap.content)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+
+              <TouchableOpacity
+                style={styles.menuCloseBtn}
+                onPress={() => setHistoryModalNodeId(null)}
+              >
+                <Text style={styles.modalCancelText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={backupModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setBackupModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalBox, { maxHeight: '82%' }]}>
+              <Text style={styles.modalTitle}>💾 Backup do Segundo Cérebro</Text>
+              <Text style={styles.backupSubtitle}>
+                Exporte todas as suas {nodes.length} notas em JSON para guardar no Google Drive/Arquivos, ou cole um backup para restaurar.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.backupExportBtn}
+                onPress={handleExportFullBackup}
+              >
+                <Text style={styles.backupExportText}>
+                  📤 Exportar / Compartilhar Backup JSON
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={styles.templateHeading}>
+                RESTAURAR BACKUP (COLAR JSON):
+              </Text>
+              <TextInput
+                style={styles.backupInput}
+                value={backupJsonInput}
+                onChangeText={setBackupJsonInput}
+                multiline
+                placeholder="Cole aqui o texto JSON exportado..."
+                placeholderTextColor="#475569"
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => setBackupModalVisible(false)}
+                  style={styles.modalCancel}
+                >
+                  <Text style={styles.modalCancelText}>Fechar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleImportBackup}
+                  style={styles.modalConfirm}
+                >
+                  <Text style={styles.modalConfirmText}>Restaurar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -697,7 +987,7 @@ export default function App() {
           />
 
           <BlockEditor
-            noteId={selectedNode.id}
+            noteId={`${selectedNode.id}-${editorRefreshKey}`}
             rawContent={selectedNode.content}
             availableNoteTitles={availableNoteTitles.filter(
               (t) => t !== selectedNode.title
@@ -789,17 +1079,23 @@ export default function App() {
         <View>
           <Text style={styles.brand}>NEXUS</Text>
           <Text style={styles.subtitle}>
-            v0.4 • Segundo Cérebro ({nodes.length} notas)
+            v0.5 • Segundo Cérebro ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={() => setBackupModalVisible(true)}
+          >
+            <Text style={styles.secondaryBtnText}>⚙</Text>
+          </TouchableOpacity>
           {activeTab === 'spaces' && (
             <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={toggleExpandAll}
             >
               <Text style={styles.secondaryBtnText}>
-                {anyExpanded ? '▸ Recolher' : '▾ Expandir'}
+                {anyExpanded ? '▸' : '▾'}
               </Text>
             </TouchableOpacity>
           )}
@@ -848,7 +1144,7 @@ export default function App() {
             <View style={styles.treeCard}>{renderTree(null, 0)}</View>
           )}
           <Text style={styles.tipText}>
-            Explore a aba Grafo para ver o mapa visual de suas conexões ou Tarefas para acompanhar todas as checklists!
+            Dica: Use Modelos prontos ao criar um espaço, insira Tabelas no editor e faça backups pelo botão ⚙!
           </Text>
         </ScrollView>
       )}
@@ -875,7 +1171,7 @@ export default function App() {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar notas, #tags ou conteúdo..."
+            placeholder="Buscar notas, #tags, tabelas ou conteúdo..."
             placeholderTextColor="#64748B"
             autoFocus
           />
@@ -1057,7 +1353,7 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: '#CBD5E1',
     fontWeight: '600',
-    fontSize: 12,
+    fontSize: 13,
   },
   primaryBtn: {
     backgroundColor: '#6366F1',
@@ -1414,7 +1710,38 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: '#F8FAFC',
     fontSize: 15,
+    marginBottom: 12,
+  },
+  templateHeading: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  templateRow: {
+    gap: 8,
     marginBottom: 16,
+  },
+  templateChip: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  templateChipActive: {
+    backgroundColor: '#6366F1',
+    borderColor: '#818CF8',
+  },
+  templateChipText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  templateChipTextActive: {
+    color: '#FFFFFF',
   },
   modalActions: {
     flexDirection: 'row',
@@ -1477,5 +1804,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     marginTop: 4,
+  },
+  snapPreview: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 3,
+  },
+  backupSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  backupExportBtn: {
+    backgroundColor: '#0C4A6E',
+    borderWidth: 1,
+    borderColor: '#0284C7',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  backupExportText: {
+    color: '#7DD3FC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  backupInput: {
+    backgroundColor: '#0B0F17',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    padding: 10,
+    color: '#CBD5E1',
+    fontSize: 12,
+    height: 110,
+    textAlignVertical: 'top',
+    marginBottom: 14,
   },
 });
