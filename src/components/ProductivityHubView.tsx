@@ -31,6 +31,7 @@ interface ProductivityHubViewProps {
   onOpenDrawer: () => void;
   onGoToTasks: () => void;
   onGoToSpaces: () => void;
+  onOpenInBrowser?: (url: string, title: string) => void;
   onExportToSpaces: (title: string, serializedContent: string) => void;
 }
 
@@ -43,6 +44,7 @@ export default function ProductivityHubView({
   onOpenDrawer,
   onGoToTasks,
   onGoToSpaces,
+  onOpenInBrowser,
   onExportToSpaces,
 }: ProductivityHubViewProps) {
   const [selectedTool, setSelectedTool] = useState<ProductivityToolDef | null>(
@@ -74,6 +76,14 @@ export default function ProductivityHubView({
       ),
     })).filter((cat) => cat.tools.length > 0);
   }, [search]);
+
+  const milanoteTool = useMemo(() => {
+    for (const cat of PRODUCTIVITY_CATEGORIES) {
+      const found = cat.tools.find((t) => t.kind === 'milanote');
+      if (found) return found;
+    }
+    return null;
+  }, []);
 
   const handlePressTool = (tool: ProductivityToolDef) => {
     if (tool.kind === 'tasks_link') {
@@ -125,13 +135,13 @@ export default function ProductivityHubView({
           courses={courses}
           lessons={lessons}
           theme={theme}
+          onOpenInBrowser={onOpenInBrowser}
           onExportToSpaces={onExportToSpaces}
         />
       </View>
     );
   }
 
-  // Hub Principal com todas as categorias
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View
@@ -164,6 +174,50 @@ export default function ProductivityHubView({
         style={styles.bodyScroll}
         keyboardShouldPersistTaps="handled"
       >
+        {milanoteTool && (
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setSelectedTool(milanoteTool)}
+            style={[
+              styles.milanoteBanner,
+              {
+                backgroundColor: theme.isDark ? '#4A044E' : '#FCE7F3',
+                borderColor: '#EC4899',
+              },
+            ]}
+          >
+            <Text style={{ fontSize: 24 }}>🎨</Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  color: theme.isDark ? '#FBCFE8' : '#831843',
+                  fontSize: 15,
+                  fontWeight: '800',
+                }}
+              >
+                Quadro de Visão (Estilo Milanote)
+              </Text>
+              <Text
+                style={{
+                  color: theme.isDark ? '#F472B6' : '#9D174D',
+                  fontSize: 11,
+                }}
+              >
+                Arraste cartões, desenhos, colunas, setas e sub-quadros
+              </Text>
+            </View>
+            <Text
+              style={{
+                color: theme.isDark ? '#FBCFE8' : '#831843',
+                fontSize: 18,
+                fontWeight: '800',
+              }}
+            >
+              ›
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <View
           style={[
             styles.searchPill,
@@ -274,6 +328,16 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 14,
     paddingTop: 14,
+  },
+  milanoteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+    marginBottom: 12,
   },
   searchPill: {
     flexDirection: 'row',
