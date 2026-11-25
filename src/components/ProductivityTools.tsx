@@ -24,6 +24,7 @@ import {
   serializeBlocks,
 } from '../editor/blocks';
 import { ProductivityToolDef } from '../data/productivityCatalog';
+import MilanoteBoardView from './MilanoteBoardView';
 
 interface ToolRunnerProps {
   tool: ProductivityToolDef;
@@ -31,6 +32,7 @@ interface ToolRunnerProps {
   courses: CourseItem[];
   lessons: CourseLessonItem[];
   theme: EditorTheme;
+  onOpenInBrowser?: (url: string, title: string) => void;
   onExportToSpaces: (title: string, serializedContent: string) => void;
 }
 
@@ -275,7 +277,7 @@ function CountdownTool({ theme }: { theme: EditorTheme }) {
   );
 }
 
-// 3. RODA DA VIDA (8 Áreas)
+// 3. RODA DA VIDA
 const WHEEL_AREAS = [
   { key: 'health', label: 'Saúde & Energia', color: '#10B981' },
   { key: 'career', label: 'Carreira & Trabalho', color: '#3B82F6' },
@@ -1038,7 +1040,7 @@ function StatsTool({
   );
 }
 
-// 9. ESTÚDIO DE FRAMEWORKS (SWOT, 5W2H, OKR, Ikigai, SMART, Gantt, Canvas, etc.)
+// 9. ESTÚDIO DE FRAMEWORKS
 function FrameworkStudioTool({
   tool,
   theme,
@@ -1151,8 +1153,19 @@ export default function ProductivityToolRunner({
   courses,
   lessons,
   theme,
+  onOpenInBrowser,
   onExportToSpaces,
 }: ToolRunnerProps) {
+  if (tool.kind === 'milanote') {
+    return (
+      <MilanoteBoardView
+        theme={theme}
+        onOpenInBrowser={onOpenInBrowser}
+        onExportToSpaces={onExportToSpaces}
+      />
+    );
+  }
+
   return (
     <ScrollView
       style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }}
