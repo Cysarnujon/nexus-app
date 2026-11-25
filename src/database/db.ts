@@ -180,6 +180,21 @@ export function initDatabase(): void {
   }
 }
 
+export function getAppMeta(key: string): string | null {
+  const row = db.getFirstSync<MetaRow>(
+    'SELECT value FROM app_meta WHERE key = ?',
+    [key]
+  );
+  return row ? row.value : null;
+}
+
+export function setAppMeta(key: string, value: string): void {
+  db.runSync(
+    'INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)',
+    [key, value]
+  );
+}
+
 export function getAllNodes(): NexusNode[] {
   const rows = db.getAllSync<NodeRow>(
     'SELECT * FROM nodes ORDER BY sort_order ASC, updated_at ASC'
@@ -351,7 +366,7 @@ export function exportBackupJson(): string {
   return JSON.stringify(
     {
       app: 'Nexus',
-      version: 5,
+      version: 6,
       exportedAt: Date.now(),
       nodes,
     },
@@ -369,7 +384,11 @@ export function importBackupJson(rawJson: string): number {
   let count = 0;
   db.withTransactionSync(() => {
     for (const item of parsed.nodes as Partial<NexusNode>[]) {
-      if (!item || typeof item.id !== 'string' || typeof item.title !== 'string') {
+      if (
+        !item ||
+        typeof item.id !== 'string' ||
+        typeof item.title !== 'string'
+      ) {
         continue;
       }
       const content = typeof item.content === 'string' ? item.content : '';
