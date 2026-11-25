@@ -7,6 +7,7 @@ export type ProductivityToolKind =
   | 'budget'
   | 'stats'
   | 'wordcloud'
+  | 'milanote'
   | 'tasks_link'
   | 'spaces_link'
   | 'framework';
@@ -439,6 +440,14 @@ export const PRODUCTIVITY_CATEGORIES: ProductivityCategoryDef[] = [
     title: 'Ferramentas Especiais',
     tools: [
       {
+        id: 'milanote_vision',
+        title: 'Quadro de Visão',
+        icon: '🎨',
+        color: '#EC4899',
+        subtitle: 'Estilo Milanote completo',
+        kind: 'milanote',
+      },
+      {
         id: 'flashcards',
         title: 'Flashcards',
         icon: '🃏',
@@ -493,16 +502,16 @@ export const PRODUCTIVITY_CATEGORIES: ProductivityCategoryDef[] = [
       },
       {
         id: 'storytelling',
-        title: 'Storytelling / Visão',
+        title: 'Storytelling',
         icon: '🎬',
         color: '#EC4899',
-        subtitle: 'Roteiro e Quadro de Visão',
+        subtitle: 'Estrutura narrativa',
         kind: 'framework',
         sections: [
           { key: 'hook', title: '1. Gancho / Contexto', color: '#6366F1', hint: 'Como a história começa...' },
           { key: 'conflict', title: '2. Conflito / Desafio', color: '#EF4444', hint: 'O obstáculo principal...' },
           { key: 'climax', title: '3. Virada / Clímax', color: '#F59E0B', hint: 'A descoberta ou solução...' },
-          { key: 'vision', title: '4. Resolução / Quadro de Visão', color: '#10B981', hint: 'Transformação final e sonho visualizado...' },
+          { key: 'vision', title: '4. Resolução', color: '#10B981', hint: 'Transformação final...' },
         ],
       },
       {
