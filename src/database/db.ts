@@ -11,6 +11,14 @@ export interface NexusNode {
   updatedAt: number;
 }
 
+export interface NodeSnapshot {
+  id: string;
+  nodeId: string;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
 interface NodeRow {
   id: string;
   parent_id: string | null;
@@ -20,6 +28,14 @@ interface NodeRow {
   is_favorite: number;
   sort_order: number;
   updated_at: number;
+}
+
+interface SnapshotRow {
+  id: string;
+  node_id: string;
+  title: string;
+  content: string;
+  created_at: number;
 }
 
 interface MetaRow {
@@ -123,6 +139,13 @@ export function initDatabase(): void {
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY NOT NULL,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id TEXT PRIMARY KEY NOT NULL,
+      node_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
     );
   `);
 
@@ -274,6 +297,108 @@ export function deleteNodesByIds(ids: string[]): void {
   db.withTransactionSync(() => {
     for (const id of ids) {
       db.runSync('DELETE FROM nodes WHERE id = ?', [id]);
+      db.runSync('DELETE FROM snapshots WHERE node_id = ?', [id]);
     }
   });
+}
+
+export function saveNodeSnapshot(
+  nodeId: string,
+  title: string,
+  content: string
+): NodeSnapshot {
+  const now = Date.now();
+  const id = `snap-${now}-${Math.floor(Math.random() * 10000)}`;
+
+  db.withTransactionSync(() => {
+    db.runSync(
+      `INSERT INTO snapshots (id, node_id, title, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, nodeId, title, content, now]
+    );
+    db.runSync(
+      `DELETE FROM snapshots
+       WHERE node_id = ?
+         AND id NOT IN (
+           SELECT id FROM snapshots
+           WHERE node_id = ?
+           ORDER BY created_at DESC
+           LIMIT 15
+         )`,
+      [nodeId, nodeId]
+    );
+  });
+
+  return { id, nodeId, title, content, createdAt: now };
+}
+
+export function getNodeSnapshots(nodeId: string): NodeSnapshot[] {
+  const rows = db.getAllSync<SnapshotRow>(
+    'SELECT * FROM snapshots WHERE node_id = ? ORDER BY created_at DESC',
+    [nodeId]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    nodeId: r.node_id,
+    title: r.title,
+    content: r.content,
+    createdAt: r.created_at,
+  }));
+}
+
+export function exportBackupJson(): string {
+  const nodes = getAllNodes();
+  return JSON.stringify(
+    {
+      app: 'Nexus',
+      version: 5,
+      exportedAt: Date.now(),
+      nodes,
+    },
+    null,
+    2
+  );
+}
+
+export function importBackupJson(rawJson: string): number {
+  const parsed = JSON.parse(rawJson) as { nodes?: unknown };
+  if (!parsed || !Array.isArray(parsed.nodes)) {
+    throw new Error('Formato inválido: campo "nodes" não encontrado.');
+  }
+
+  let count = 0;
+  db.withTransactionSync(() => {
+    for (const item of parsed.nodes as Partial<NexusNode>[]) {
+      if (!item || typeof item.id !== 'string' || typeof item.title !== 'string') {
+        continue;
+      }
+      const content = typeof item.content === 'string' ? item.content : '';
+      const parentId =
+        typeof item.parentId === 'string' ? item.parentId : null;
+      const isExpanded = item.isExpanded ? 1 : 0;
+      const isFavorite = item.isFavorite ? 1 : 0;
+      const sortOrder =
+        typeof item.sortOrder === 'number' ? item.sortOrder : 0;
+      const updatedAt =
+        typeof item.updatedAt === 'number' ? item.updatedAt : Date.now();
+
+      db.runSync(
+        `INSERT OR REPLACE INTO nodes (id, parent_id, title, content, is_expanded, is_favorite, sort_order, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id,
+          parentId,
+          item.title,
+          content,
+          isExpanded,
+          isFavorite,
+          sortOrder,
+          updatedAt,
+        ]
+      );
+      count += 1;
+    }
+  });
+
+  return count;
 }
