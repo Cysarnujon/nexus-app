@@ -1779,6 +1779,16 @@ export default function App() {
             setShowProductivityHub(false);
             setActiveTab('spaces');
           }}
+          onOpenInBrowser={(url, title) =>
+            setBrowserSession({
+              url,
+              title,
+              sourceId: 'milanote',
+              sourceName: title,
+              sourceIcon: '🎨',
+              query: title,
+            })
+          }
           onExportToSpaces={handleExportProductivityToSpaces}
         />
       ) : showCoursesView ? (
@@ -2205,7 +2215,7 @@ export default function App() {
                 </View>
               )}
               <Text style={[styles.tipText, { color: theme.textDim }]}>
-                Nexus v1.0 completo: Pesquisa Multi-Fontes, Meus Cursos, Ferramentas Flow e Segundo Cérebro offline!
+                Nexus v1.0 completo: Quadro de Visão estilo Milanote, Pesquisa Multi-Fontes, Meus Cursos e Ferramentas Flow!
               </Text>
             </ScrollView>
           )}
