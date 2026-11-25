@@ -234,6 +234,56 @@ export default function BlockEditor({
     commitBlocks(updated, false);
   };
 
+  const handleTableCellChange = (
+    blockId: string,
+    rowIdx: number,
+    colIdx: number,
+    val: string
+  ) => {
+    const updated = blocks.map((b) => {
+      if (b.id !== blockId) return b;
+      const rows = (b.tableData ?? [['Coluna 1', 'Coluna 2']]).map((r) => [...r]);
+      if (rows[rowIdx]) {
+        rows[rowIdx][colIdx] = val;
+      }
+      return { ...b, tableData: rows };
+    });
+    commitBlocks(updated, false);
+  };
+
+  const modifyTable = (
+    blockId: string,
+    action: 'addRow' | 'removeRow' | 'addCol' | 'removeCol'
+  ) => {
+    const updated = blocks.map((b) => {
+      if (b.id !== blockId) return b;
+      const rows = (
+        b.tableData ?? [
+          ['Coluna 1', 'Coluna 2'],
+          ['', ''],
+        ]
+      ).map((r) => [...r]);
+      const colCount = rows[0]?.length ?? 2;
+
+      if (action === 'addRow') {
+        rows.push(Array(colCount).fill(''));
+      } else if (action === 'removeRow' && rows.length > 2) {
+        rows.pop();
+      } else if (action === 'addCol' && colCount < 6) {
+        rows.forEach((r, idx) => {
+          r.push(idx === 0 ? `Col ${colCount + 1}` : '');
+        });
+      } else if (action === 'removeCol' && colCount > 1) {
+        rows.forEach((r) => {
+          r.pop();
+        });
+      }
+
+      return { ...b, tableData: rows };
+    });
+    commitBlocks(updated);
+  };
+
   const toggleTodoChecked = (blockId: string) => {
     const updated = blocks.map((b) =>
       b.id === blockId ? { ...b, checked: !b.checked } : b
@@ -285,6 +335,14 @@ export default function BlockEditor({
               type === 'callout' ? b.calloutVariant ?? 'info' : undefined,
             toggleBody: type === 'toggle' ? b.toggleBody ?? '' : undefined,
             isOpen: type === 'toggle' ? b.isOpen ?? true : undefined,
+            tableData:
+              type === 'table'
+                ? b.tableData ?? [
+                    ['Coluna 1', 'Coluna 2'],
+                    ['', ''],
+                    ['', ''],
+                  ]
+                : b.tableData,
           }
         : b
     );
@@ -321,6 +379,9 @@ export default function BlockEditor({
       calloutVariant: activeBlock.calloutVariant,
       toggleBody: activeBlock.toggleBody,
       isOpen: activeBlock.isOpen,
+      tableData: activeBlock.tableData
+        ? activeBlock.tableData.map((r) => [...r])
+        : undefined,
     });
     const next = [...blocks];
     next.splice(idx + 1, 0, clone);
@@ -338,7 +399,13 @@ export default function BlockEditor({
   };
 
   const appendSnippetToActive = (snippet: string) => {
-    if (!activeBlock || activeBlock.type === 'divider') return;
+    if (
+      !activeBlock ||
+      activeBlock.type === 'divider' ||
+      activeBlock.type === 'table'
+    ) {
+      return;
+    }
     const sep =
       activeBlock.text.length === 0 || activeBlock.text.endsWith(' ')
         ? ''
@@ -357,7 +424,12 @@ export default function BlockEditor({
 
   const stats = useMemo(() => {
     const fullText = blocks
-      .map((b) => (b.toggleBody ? `${b.text} ${b.toggleBody}` : b.text))
+      .map((b) => {
+        if (b.type === 'table' && b.tableData) {
+          return b.tableData.map((r) => r.join(' ')).join(' ');
+        }
+        return b.toggleBody ? `${b.text} ${b.toggleBody}` : b.text;
+      })
       .join(' ')
       .trim();
     const chars = fullText.length;
@@ -443,6 +515,111 @@ export default function BlockEditor({
               >
                 <View style={styles.dividerLine} />
               </TouchableOpacity>
+            );
+          }
+
+          if (block.type === 'table') {
+            const tableRows = block.tableData ?? [
+              ['Coluna 1', 'Coluna 2'],
+              ['', ''],
+            ];
+            return (
+              <View
+                key={block.id}
+                style={[
+                  styles.tableWrapper,
+                  isFocused && styles.blockFocusedBorder,
+                ]}
+              >
+                <ScrollView horizontal showsHorizontalScrollIndicator>
+                  <View>
+                    {tableRows.map((row, rIdx) => (
+                      <View
+                        key={`r-${rIdx}`}
+                        style={[
+                          styles.tableRow,
+                          rIdx === 0 && styles.tableHeaderRow,
+                        ]}
+                      >
+                        {row.map((cell, cIdx) => (
+                          <View key={`c-${cIdx}`} style={styles.tableCell}>
+                            {isPreviewMode ? (
+                              <Text
+                                style={[
+                                  styles.tableCellPreview,
+                                  rIdx === 0 && styles.tableHeaderText,
+                                ]}
+                              >
+                                {cell || ' '}
+                              </Text>
+                            ) : (
+                              <TextInput
+                                style={[
+                                  styles.tableCellInput,
+                                  rIdx === 0 && styles.tableHeaderText,
+                                ]}
+                                value={cell}
+                                onFocus={() => setActiveBlockId(block.id)}
+                                onChangeText={(val) =>
+                                  handleTableCellChange(
+                                    block.id,
+                                    rIdx,
+                                    cIdx,
+                                    val
+                                  )
+                                }
+                                placeholder={rIdx === 0 ? 'Título' : '...'}
+                                placeholderTextColor="#475569"
+                              />
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                {!isPreviewMode && (
+                  <View style={styles.tableControls}>
+                    <TouchableOpacity
+                      style={styles.tableCtrlBtn}
+                      onPress={() => {
+                        setActiveBlockId(block.id);
+                        modifyTable(block.id, 'addRow');
+                      }}
+                    >
+                      <Text style={styles.tableCtrlText}>+ Linha</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.tableCtrlBtn}
+                      onPress={() => {
+                        setActiveBlockId(block.id);
+                        modifyTable(block.id, 'removeRow');
+                      }}
+                    >
+                      <Text style={styles.tableCtrlText}>− Linha</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.tableCtrlBtn}
+                      onPress={() => {
+                        setActiveBlockId(block.id);
+                        modifyTable(block.id, 'addCol');
+                      }}
+                    >
+                      <Text style={styles.tableCtrlText}>+ Col</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.tableCtrlBtn}
+                      onPress={() => {
+                        setActiveBlockId(block.id);
+                        modifyTable(block.id, 'removeCol');
+                      }}
+                    >
+                      <Text style={styles.tableCtrlText}>− Col</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
             );
           }
 
@@ -1217,6 +1394,60 @@ const styles = StyleSheet.create({
   dividerLine: {
     height: 1.5,
     backgroundColor: '#334155',
+  },
+  tableWrapper: {
+    backgroundColor: '#0B0F17',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 8,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
+  },
+  tableHeaderRow: {
+    backgroundColor: '#1E293B',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  tableCell: {
+    width: 118,
+    borderRightWidth: 1,
+    borderRightColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  tableCellInput: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    paddingVertical: 2,
+  },
+  tableCellPreview: {
+    color: '#CBD5E1',
+    fontSize: 13,
+  },
+  tableHeaderText: {
+    color: '#F8FAFC',
+    fontWeight: '700',
+  },
+  tableControls: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  tableCtrlBtn: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  tableCtrlText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
   },
   addBlockBottomBtn: {
     marginTop: 6,
