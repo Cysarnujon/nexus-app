@@ -93,6 +93,7 @@ interface HomeSearchViewProps {
   savedSearches: SavedSearchItem[];
   recentSearches: SavedSearchItem[];
   onOpenCourses: () => void;
+  onOpenProductivityHub: () => void;
   onAddCustomSource: (source: SearchSource) => void;
   onDeleteCustomSource: (id: string) => void;
   onOpenWebUrl: (
@@ -115,6 +116,7 @@ export default function HomeSearchView({
   savedSearches,
   recentSearches,
   onOpenCourses,
+  onOpenProductivityHub,
   onAddCustomSource,
   onDeleteCustomSource,
   onOpenWebUrl,
@@ -137,7 +139,6 @@ export default function HomeSearchView({
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceUrl, setNewSourceUrl] = useState('');
 
-  // Modal + Novo Link rápido
   const [newLinkModalVisible, setNewLinkModalVisible] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
   const [manualUrl, setManualUrl] = useState('');
@@ -310,7 +311,6 @@ export default function HomeSearchView({
       style={styles.scrollArea}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Barra de Pesquisa Principal */}
       <View
         style={[
           styles.searchPill,
@@ -359,7 +359,6 @@ export default function HomeSearchView({
         </TouchableOpacity>
       </View>
 
-      {/* Dropdown Flutuante de Fontes (sem Spotify!) */}
       {dropdownOpen && (
         <View
           style={[
@@ -443,7 +442,7 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Banner Meus Cursos (igual ao print!) */}
+      {/* Banners Meus Cursos & Ferramentas de Produtividade */}
       <TouchableOpacity
         activeOpacity={0.85}
         onPress={onOpenCourses}
@@ -469,6 +468,40 @@ export default function HomeSearchView({
         <Text
           style={{
             color: theme.isDark ? '#93C5FD' : '#1E3A8A',
+            fontSize: 16,
+            fontWeight: '800',
+          }}
+        >
+          ›
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onOpenProductivityHub}
+        style={[
+          styles.coursesBanner,
+          {
+            marginTop: 8,
+            backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE',
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <Text style={{ fontSize: 18 }}>🧰</Text>
+        <Text
+          style={{
+            flex: 1,
+            color: theme.isDark ? '#D8B4FE' : '#4C1D95',
+            fontSize: 15,
+            fontWeight: '800',
+          }}
+        >
+          Ferramentas Flow (Pomodoro, SWOT, Roda da Vida...)
+        </Text>
+        <Text
+          style={{
+            color: theme.isDark ? '#D8B4FE' : '#4C1D95',
             fontSize: 16,
             fontWeight: '800',
           }}
@@ -508,7 +541,6 @@ export default function HomeSearchView({
         </TouchableOpacity>
       </View>
 
-      {/* Resultados ao vivo do Nexus quando fonte = Nexus */}
       {selectedSource.id === 'nexus' && query.trim().length > 0 && (
         <View style={{ marginBottom: 18 }}>
           <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
@@ -551,7 +583,6 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Pesquisas Salvas + Filtro por Tags + Novo Link */}
       <View style={{ marginBottom: 18 }}>
         <View style={styles.rowBetween}>
           <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
@@ -699,7 +730,6 @@ export default function HomeSearchView({
         )}
       </View>
 
-      {/* Histórico Recente */}
       {recentSearches.length > 0 && (
         <View style={{ marginBottom: 18 }}>
           <View style={styles.rowBetween}>
@@ -737,7 +767,6 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Favoritos do Segundo Cérebro */}
       {favoriteNodes.length > 0 && (
         <View style={{ marginBottom: 26 }}>
           <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
@@ -766,7 +795,6 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Modal Adicionar Nova Fonte */}
       <Modal
         visible={addSourceVisible}
         transparent
@@ -837,7 +865,6 @@ export default function HomeSearchView({
         </View>
       </Modal>
 
-      {/* Modal + Novo Link */}
       <Modal
         visible={newLinkModalVisible}
         transparent
