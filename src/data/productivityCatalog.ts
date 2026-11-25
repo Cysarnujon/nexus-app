@@ -8,6 +8,7 @@ export type ProductivityToolKind =
   | 'stats'
   | 'wordcloud'
   | 'milanote'
+  | 'mindmap'
   | 'tasks_link'
   | 'spaces_link'
   | 'framework';
@@ -448,6 +449,14 @@ export const PRODUCTIVITY_CATEGORIES: ProductivityCategoryDef[] = [
         kind: 'milanote',
       },
       {
+        id: 'mindmap',
+        title: 'Mapa Mental',
+        icon: '🧠',
+        color: '#A855F7',
+        subtitle: 'Estilo miMind completo',
+        kind: 'mindmap',
+      },
+      {
         id: 'flashcards',
         title: 'Flashcards',
         icon: '🃏',
@@ -484,20 +493,6 @@ export const PRODUCTIVITY_CATEGORIES: ProductivityCategoryDef[] = [
           { key: 'ch', title: 'Canais & Relacionamento', color: '#0EA5E9', hint: 'Como chega até o público?' },
           { key: 'rev', title: 'Fontes de Receita', color: '#10B981', hint: 'Como monetiza?' },
           { key: 'cost', title: 'Atividades, Recursos & Custos', color: '#EF4444', hint: 'O que precisa e quanto custa?' },
-        ],
-      },
-      {
-        id: 'mindmap',
-        title: 'Mapa Mental',
-        icon: '🧠',
-        color: '#A855F7',
-        subtitle: 'Ideia central e ramificações',
-        kind: 'framework',
-        sections: [
-          { key: 'core', title: '💡 Ideia Central', color: '#A855F7', hint: 'Tema principal do mapa...' },
-          { key: 'b1', title: 'Ramo 1', color: '#3B82F6', hint: 'Subtópicos e conexões...' },
-          { key: 'b2', title: 'Ramo 2', color: '#10B981', hint: 'Subtópicos e conexões...' },
-          { key: 'b3', title: 'Ramo 3', color: '#F59E0B', hint: 'Subtópicos e conexões...' },
         ],
       },
       {
