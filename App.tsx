@@ -1,5 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   Modal,
   Platform,
   ScrollView,
@@ -11,62 +13,21 @@ import {
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import {
+  NexusNode,
+  deleteNodesByIds,
+  getAllNodes,
+  initDatabase,
+  insertNode,
+  setAllNodesExpanded,
+  setNodeExpanded,
+  setNodeFavorite,
+  swapSiblingOrder,
+  updateNodeContent,
+  updateNodeParent,
+} from './src/database/db';
 
-interface NexusNode {
-  id: string;
-  parentId: string | null;
-  title: string;
-  content: string;
-  isExpanded: boolean;
-  isFavorite?: boolean;
-}
-
-const INITIAL_NODES: NexusNode[] = [
-  {
-    id: '1',
-    parentId: null,
-    title: 'Estudos',
-    content: 'Central de aprendizado contínuo.\n\nConectado com [[Teoria musical]] e [[Investimentos]].\n\n#estudos #foco',
-    isExpanded: true,
-    isFavorite: true,
-  },
-  {
-    id: '2',
-    parentId: null,
-    title: 'Produção musical',
-    content: 'Projetos de áudio, beats e mixagem.\n\n#musica #producao',
-    isExpanded: true,
-    isFavorite: true,
-  },
-  {
-    id: '3',
-    parentId: '2',
-    title: 'FL Studio',
-    content: '- Atalhos de Piano Roll\n- Cadeia de masterização\n- Aplicar conceitos de [[Teoria musical]] nos acordes.\n\n#daw #flstudio',
-    isExpanded: false,
-  },
-  {
-    id: '4',
-    parentId: '2',
-    title: 'Teoria musical',
-    content: 'Escalas maiores, menores e campo harmônico.\n\nPraticar progressões II-V-I no [[FL Studio]].\n\n#teoria #harmonia',
-    isExpanded: false,
-  },
-  {
-    id: '5',
-    parentId: '2',
-    title: 'Videoaulas',
-    content: 'Lista de aulas pendentes sobre sound design e compressão paralela.\n\n#aulas #estudos',
-    isExpanded: false,
-  },
-  {
-    id: '6',
-    parentId: null,
-    title: 'Investimentos',
-    content: 'Reserva de emergência, renda fixa e metas de longo prazo.\n\n#financas #metas',
-    isExpanded: false,
-  },
-];
+type MainTab = 'spaces' | 'favorites' | 'search';
 
 function extractTags(text: string): string[] {
   const matches = text.match(/#[a-zA-Z0-9_À-ÿ]+/g) || [];
@@ -85,26 +46,132 @@ function extractLinks(text: string): string[] {
   return Array.from(new Set(matches));
 }
 
+function formatTime(timestamp: number): string {
+  const d = new Date(timestamp);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function getDescendantIds(allNodes: NexusNode[], rootId: string): string[] {
+  const result: string[] = [];
+  const queue: string[] = [rootId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    result.push(current);
+    for (const n of allNodes) {
+      if (n.parentId === current) {
+        queue.push(n.id);
+      }
+    }
+  }
+  return result;
+}
+
 export default function App() {
-  const [nodes, setNodes] = useState<NexusNode[]>(INITIAL_NODES);
-  const [activeTab, setActiveTab] = useState<'spaces' | 'search'>('spaces');
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [nodes, setNodes] = useState<NexusNode[]>([]);
+  const [activeTab, setActiveTab] = useState<MainTab>('spaces');
+  const [pageHistory, setPageHistory] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Modal de criação
   const [newTopicModalVisible, setNewTopicModalVisible] = useState(false);
   const [newTopicParentId, setNewTopicParentId] = useState<string | null>(null);
   const [newTopicTitle, setNewTopicTitle] = useState('');
 
+  // Modal de opções (⋯)
+  const [menuNodeId, setMenuNodeId] = useState<string | null>(null);
+
+  // Modal de mover tópico
+  const [moveNodeId, setMoveNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      initDatabase();
+      setNodes(getAllNodes());
+    } catch (error) {
+      Alert.alert('Erro ao abrir banco', String(error));
+    }
+  }, []);
+
+  const currentPageId =
+    pageHistory.length > 0 ? pageHistory[pageHistory.length - 1] : null;
+
   const selectedNode = useMemo(
-    () => nodes.find((n) => n.id === selectedNodeId) ?? null,
-    [nodes, selectedNodeId]
+    () => nodes.find((n) => n.id === currentPageId) ?? null,
+    [nodes, currentPageId]
   );
 
+  const menuNode = useMemo(
+    () => nodes.find((n) => n.id === menuNodeId) ?? null,
+    [nodes, menuNodeId]
+  );
+
+  const moveNode = useMemo(
+    () => nodes.find((n) => n.id === moveNodeId) ?? null,
+    [nodes, moveNodeId]
+  );
+
+  // Botão físico/gesto Voltar do Android
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (moveNodeId) {
+        setMoveNodeId(null);
+        return true;
+      }
+      if (menuNodeId) {
+        setMenuNodeId(null);
+        return true;
+      }
+      if (newTopicModalVisible) {
+        setNewTopicModalVisible(false);
+        return true;
+      }
+      if (pageHistory.length > 0) {
+        setPageHistory((prev) => prev.slice(0, -1));
+        return true;
+      }
+      if (activeTab !== 'spaces') {
+        setActiveTab('spaces');
+        return true;
+      }
+      return false;
+    });
+
+    return () => subscription.remove();
+  }, [moveNodeId, menuNodeId, newTopicModalVisible, pageHistory, activeTab]);
+
+  const openPage = (id: string) => {
+    setPageHistory((prev) => {
+      if (prev[prev.length - 1] === id) return prev;
+      return [...prev, id];
+    });
+  };
+
+  const goBackPage = () => {
+    setPageHistory((prev) => prev.slice(0, -1));
+  };
+
+  const goHome = () => {
+    setPageHistory([]);
+  };
+
   const toggleExpand = (id: string) => {
+    const target = nodes.find((n) => n.id === id);
+    if (!target) return;
+    const nextExpanded = !target.isExpanded;
+    setNodeExpanded(id, nextExpanded);
     setNodes((prev) =>
-      prev.map((node) =>
-        node.id === id ? { ...node, isExpanded: !node.isExpanded } : node
-      )
+      prev.map((n) => (n.id === id ? { ...n, isExpanded: nextExpanded } : n))
     );
+  };
+
+  const anyExpanded = useMemo(() => nodes.some((n) => n.isExpanded), [nodes]);
+
+  const toggleExpandAll = () => {
+    const nextState = !anyExpanded;
+    setAllNodesExpanded(nextState);
+    setNodes((prev) => prev.map((n) => ({ ...n, isExpanded: nextState })));
   };
 
   const openCreateModal = (parentId: string | null) => {
@@ -117,39 +184,131 @@ export default function App() {
     const trimmed = newTopicTitle.trim();
     if (!trimmed) return;
 
-    const newNode: NexusNode = {
-      id: Date.now().toString(),
+    const created = insertNode({
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       parentId: newTopicParentId,
       title: trimmed,
-      content: 'Escreva suas ideias aqui...\n\nUse #tags ou [[Nome de outra nota]] para conectar.',
+      content:
+        'Escreva suas ideias aqui...\n\nUse #tags ou [[Nome de outra nota]] para conectar.',
       isExpanded: true,
-    };
+      isFavorite: false,
+    });
+
+    if (newTopicParentId) {
+      setNodeExpanded(newTopicParentId, true);
+    }
 
     setNodes((prev) =>
       prev
-        .map((n) => (n.id === newTopicParentId ? { ...n, isExpanded: true } : n))
-        .concat(newNode)
+        .map((n) =>
+          n.id === newTopicParentId ? { ...n, isExpanded: true } : n
+        )
+        .concat(created)
     );
     setNewTopicModalVisible(false);
     setNewTopicTitle('');
   };
 
-  const updateNodeField = (id: string, field: 'title' | 'content', value: string) => {
+  const handleEditPage = (id: string, title: string, content: string) => {
+    const updatedAt = updateNodeContent(id, title, content);
     setNodes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, [field]: value } : n))
+      prev.map((n) =>
+        n.id === id ? { ...n, title, content, updatedAt } : n
+      )
     );
   };
 
   const toggleFavorite = (id: string) => {
+    const target = nodes.find((n) => n.id === id);
+    if (!target) return;
+    const nextFav = !target.isFavorite;
+    setNodeFavorite(id, nextFav);
     setNodes((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isFavorite: !n.isFavorite } : n))
+      prev.map((n) => (n.id === id ? { ...n, isFavorite: nextFav } : n))
     );
+  };
+
+  const moveSibling = (id: string, direction: 'up' | 'down') => {
+    const current = nodes.find((n) => n.id === id);
+    if (!current) return;
+
+    const siblings = nodes
+      .filter((n) => n.parentId === current.parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const idx = siblings.findIndex((s) => s.id === id);
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return;
+
+    const other = siblings[swapIdx];
+    const orderA = current.sortOrder === other.sortOrder ? idx : current.sortOrder;
+    const orderB = current.sortOrder === other.sortOrder ? swapIdx : other.sortOrder;
+
+    swapSiblingOrder(current.id, orderA, other.id, orderB);
+    setNodes((prev) =>
+      prev
+        .map((n) => {
+          if (n.id === current.id) return { ...n, sortOrder: orderB };
+          if (n.id === other.id) return { ...n, sortOrder: orderA };
+          return n;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
+  };
+
+  const confirmDeleteNode = (node: NexusNode) => {
+    const idsToDelete = getDescendantIds(nodes, node.id);
+    const subCount = idsToDelete.length - 1;
+    const msg =
+      subCount > 0
+        ? `Tem certeza que deseja excluir "${node.title}" e seus ${subCount} subtópico(s)?`
+        : `Tem certeza que deseja excluir "${node.title}"?`;
+
+    Alert.alert('Excluir tópico', msg, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => {
+          deleteNodesByIds(idsToDelete);
+          setNodes((prev) => prev.filter((n) => !idsToDelete.includes(n.id)));
+          setPageHistory((prev) =>
+            prev.filter((pid) => !idsToDelete.includes(pid))
+          );
+          setMenuNodeId(null);
+        },
+      },
+    ]);
+  };
+
+  const handleMoveToParent = (targetParentId: string | null) => {
+    if (!moveNode) return;
+    const newOrder = updateNodeParent(moveNode.id, targetParentId);
+    if (targetParentId) {
+      setNodeExpanded(targetParentId, true);
+    }
+    setNodes((prev) =>
+      prev
+        .map((n) => {
+          if (n.id === moveNode.id) {
+            return { ...n, parentId: targetParentId, sortOrder: newOrder };
+          }
+          if (n.id === targetParentId) {
+            return { ...n, isExpanded: true };
+          }
+          return n;
+        })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    );
+    setMoveNodeId(null);
   };
 
   const getBreadcrumbs = (node: NexusNode): NexusNode[] => {
     const trail: NexusNode[] = [];
     let current: NexusNode | undefined = node;
-    while (current) {
+    const visited = new Set<string>();
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
       trail.unshift(current);
       current = nodes.find((n) => n.id === current?.parentId);
     }
@@ -157,7 +316,8 @@ export default function App() {
   };
 
   const getBacklinks = (targetTitle: string, currentId: string): NexusNode[] => {
-    const lowerTarget = targetTitle.toLowerCase();
+    const lowerTarget = targetTitle.trim().toLowerCase();
+    if (!lowerTarget) return [];
     return nodes.filter((n) => {
       if (n.id === currentId) return false;
       const links = extractLinks(n.content).map((l) => l.toLowerCase());
@@ -170,29 +330,33 @@ export default function App() {
       (n) => n.title.toLowerCase() === title.toLowerCase()
     );
     if (found) {
-      setSelectedNodeId(found.id);
+      openPage(found.id);
     } else {
-      const created: NexusNode = {
-        id: Date.now().toString(),
+      const created = insertNode({
+        id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         parentId: null,
         title,
-        content: `Página criada automaticamente a partir de um link.\n\n#nova`,
+        content: 'Página criada automaticamente a partir de um link.\n\n#nova',
         isExpanded: false,
-      };
+        isFavorite: false,
+      });
       setNodes((prev) => [...prev, created]);
-      setSelectedNodeId(created.id);
+      openPage(created.id);
     }
   };
 
   const renderTree = (parentId: string | null = null, depth = 0): React.ReactNode => {
-    const children = nodes.filter((n) => n.parentId === parentId);
+    const children = nodes
+      .filter((n) => n.parentId === parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
     return children.map((node) => {
       const hasChildren = nodes.some((n) => n.parentId === node.id);
       const tags = extractTags(node.content);
 
       return (
         <View key={node.id}>
-          <View style={[styles.treeRow, { paddingLeft: 12 + depth * 20 }]}>
+          <View style={[styles.treeRow, { paddingLeft: 10 + depth * 18 }]}>
             <TouchableOpacity
               onPress={() => toggleExpand(node.id)}
               style={styles.expandBtn}
@@ -204,7 +368,7 @@ export default function App() {
 
             <TouchableOpacity
               style={styles.treeTitleArea}
-              onPress={() => setSelectedNodeId(node.id)}
+              onPress={() => openPage(node.id)}
             >
               <Text style={styles.treeTitle} numberOfLines={1}>
                 {node.isFavorite ? '★ ' : ''}
@@ -212,16 +376,23 @@ export default function App() {
               </Text>
               {tags.length > 0 && (
                 <Text style={styles.treeTagsPreview} numberOfLines={1}>
-                  {tags.slice(0, 2).join(' ')}
+                  {tags.slice(0, 3).join(' ')}
                 </Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => openCreateModal(node.id)}
-              style={styles.addSubBtn}
+              style={styles.iconActionBtn}
             >
-              <Text style={styles.addSubText}>+</Text>
+              <Text style={styles.iconActionText}>+</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setMenuNodeId(node.id)}
+              style={styles.iconActionBtn}
+            >
+              <Text style={styles.iconActionText}>⋯</Text>
             </TouchableOpacity>
           </View>
 
@@ -230,6 +401,11 @@ export default function App() {
       );
     });
   };
+
+  const favoriteNodes = useMemo(
+    () => nodes.filter((n) => n.isFavorite),
+    [nodes]
+  );
 
   const filteredSearchNodes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -240,9 +416,17 @@ export default function App() {
     );
   }, [nodes, searchQuery]);
 
+  const invalidMoveTargets = useMemo(() => {
+    if (!moveNode) return new Set<string>();
+    return new Set(getDescendantIds(nodes, moveNode.id));
+  }, [nodes, moveNode]);
+
+  // Tela de Página Completa
   if (selectedNode) {
     const breadcrumbs = getBreadcrumbs(selectedNode);
-    const subpages = nodes.filter((n) => n.parentId === selectedNode.id);
+    const subpages = nodes
+      .filter((n) => n.parentId === selectedNode.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
     const tags = extractTags(selectedNode.content);
     const links = extractLinks(selectedNode.content);
     const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
@@ -250,22 +434,38 @@ export default function App() {
     return (
       <View style={styles.container}>
         <StatusBar style="light" />
-        <View style={styles.pageHeader}>
-          <TouchableOpacity
-            onPress={() => setSelectedNodeId(null)}
-            style={styles.backBtn}
-          >
-            <Text style={styles.backBtnText}>← Início</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => toggleFavorite(selectedNode.id)}
-            style={styles.favBtn}
-          >
-            <Text style={styles.favBtnText}>
-              {selectedNode.isFavorite ? '★ Favorito' : '☆ Favoritar'}
+        <View style={styles.pageHeader}>
+          <View style={styles.pageHeaderLeft}>
+            <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
+              <Text style={styles.backBtnText}>← Voltar</Text>
+            </TouchableOpacity>
+            {pageHistory.length > 1 && (
+              <TouchableOpacity onPress={goHome} style={styles.homeChip}>
+                <Text style={styles.homeChipText}>Início</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.pageHeaderRight}>
+            <Text style={styles.savedBadge}>
+              Salvo ✓ {formatTime(selectedNode.updatedAt)}
             </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => toggleFavorite(selectedNode.id)}
+              style={styles.favBtn}
+            >
+              <Text style={styles.favBtnText}>
+                {selectedNode.isFavorite ? '★' : '☆'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMenuNodeId(selectedNode.id)}
+              style={styles.favBtn}
+            >
+              <Text style={styles.menuDotsText}>⋯</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
@@ -273,7 +473,7 @@ export default function App() {
             {breadcrumbs.map((crumb, idx) => (
               <View key={crumb.id} style={styles.breadcrumbItem}>
                 {idx > 0 && <Text style={styles.breadcrumbSep}> › </Text>}
-                <TouchableOpacity onPress={() => setSelectedNodeId(crumb.id)}>
+                <TouchableOpacity onPress={() => openPage(crumb.id)}>
                   <Text style={styles.breadcrumbText}>{crumb.title}</Text>
                 </TouchableOpacity>
               </View>
@@ -283,7 +483,9 @@ export default function App() {
           <TextInput
             style={styles.pageTitleInput}
             value={selectedNode.title}
-            onChangeText={(text) => updateNodeField(selectedNode.id, 'title', text)}
+            onChangeText={(text) =>
+              handleEditPage(selectedNode.id, text, selectedNode.content)
+            }
             placeholder="Título da página"
             placeholderTextColor="#64748B"
           />
@@ -291,7 +493,9 @@ export default function App() {
           <TextInput
             style={styles.pageContentInput}
             value={selectedNode.content}
-            onChangeText={(text) => updateNodeField(selectedNode.id, 'content', text)}
+            onChangeText={(text) =>
+              handleEditPage(selectedNode.id, selectedNode.title, text)
+            }
             multiline
             textAlignVertical="top"
             placeholder="Comece a escrever... Use #tags ou [[Links]]"
@@ -300,7 +504,9 @@ export default function App() {
 
           <View style={styles.sectionBox}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionLabel}>Subtópicos ({subpages.length})</Text>
+              <Text style={styles.sectionLabel}>
+                Subtópicos ({subpages.length})
+              </Text>
               <TouchableOpacity onPress={() => openCreateModal(selectedNode.id)}>
                 <Text style={styles.sectionAction}>+ Novo subtópico</Text>
               </TouchableOpacity>
@@ -312,7 +518,7 @@ export default function App() {
                 <TouchableOpacity
                   key={sub.id}
                   style={styles.subpageCard}
-                  onPress={() => setSelectedNodeId(sub.id)}
+                  onPress={() => openPage(sub.id)}
                 >
                   <Text style={styles.subpageTitle}>📄 {sub.title}</Text>
                 </TouchableOpacity>
@@ -355,7 +561,7 @@ export default function App() {
                 <TouchableOpacity
                   key={bl.id}
                   style={styles.subpageCard}
-                  onPress={() => setSelectedNodeId(bl.id)}
+                  onPress={() => openPage(bl.id)}
                 >
                   <Text style={styles.subpageTitle}>🔗 {bl.title}</Text>
                 </TouchableOpacity>
@@ -363,7 +569,201 @@ export default function App() {
             )}
           </View>
         </ScrollView>
+
+        {/* Modais compartilhados */}
+        {renderModals()}
       </View>
+    );
+  }
+
+  function renderModals() {
+    return (
+      <>
+        {/* Modal Novo Tópico */}
+        <Modal
+          visible={newTopicModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNewTopicModalVisible(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalBox}>
+              <Text style={styles.modalTitle}>
+                {newTopicParentId ? 'Novo Subtópico' : 'Novo Espaço'}
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newTopicTitle}
+                onChangeText={setNewTopicTitle}
+                placeholder="Digite o nome..."
+                placeholderTextColor="#64748B"
+                autoFocus
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => setNewTopicModalVisible(false)}
+                  style={styles.modalCancel}
+                >
+                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={createTopic}
+                  style={styles.modalConfirm}
+                >
+                  <Text style={styles.modalConfirmText}>Criar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Menu de Opções (⋯) */}
+        <Modal
+          visible={!!menuNode}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuNodeId(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalBox}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {menuNode?.title}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (!menuNode) return;
+                  const id = menuNode.id;
+                  setMenuNodeId(null);
+                  openPage(id);
+                }}
+              >
+                <Text style={styles.menuItemText}>📄 Abrir como página</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (!menuNode) return;
+                  const id = menuNode.id;
+                  setMenuNodeId(null);
+                  openCreateModal(id);
+                }}
+              >
+                <Text style={styles.menuItemText}>➕ Criar subtópico dentro</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (!menuNode) return;
+                  toggleFavorite(menuNode.id);
+                  setMenuNodeId(null);
+                }}
+              >
+                <Text style={styles.menuItemText}>
+                  {menuNode?.isFavorite
+                    ? '☆ Remover dos favoritos'
+                    : '★ Adicionar aos favoritos'}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.menuRowSplit}>
+                <TouchableOpacity
+                  style={styles.menuHalfBtn}
+                  onPress={() => {
+                    if (menuNode) moveSibling(menuNode.id, 'up');
+                  }}
+                >
+                  <Text style={styles.menuItemText}>↑ Subir</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuHalfBtn}
+                  onPress={() => {
+                    if (menuNode) moveSibling(menuNode.id, 'down');
+                  }}
+                >
+                  <Text style={styles.menuItemText}>↓ Descer</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  if (!menuNode) return;
+                  const id = menuNode.id;
+                  setMenuNodeId(null);
+                  setMoveNodeId(id);
+                }}
+              >
+                <Text style={styles.menuItemText}>📁 Mover para outro local</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.menuItem, styles.menuDanger]}
+                onPress={() => {
+                  if (menuNode) confirmDeleteNode(menuNode);
+                }}
+              >
+                <Text style={styles.menuDangerText}>🗑 Excluir tópico</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuCloseBtn}
+                onPress={() => setMenuNodeId(null)}
+              >
+                <Text style={styles.modalCancelText}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Mover Tópico */}
+        <Modal
+          visible={!!moveNode}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMoveNodeId(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalBox, { maxHeight: '75%' }]}>
+              <Text style={styles.modalTitle}>
+                Mover "{moveNode?.title}" para:
+              </Text>
+              <ScrollView>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => handleMoveToParent(null)}
+                >
+                  <Text style={styles.menuItemText}>🏠 Início (Raiz)</Text>
+                </TouchableOpacity>
+
+                {nodes
+                  .filter((candidate) => !invalidMoveTargets.has(candidate.id))
+                  .map((candidate) => (
+                    <TouchableOpacity
+                      key={candidate.id}
+                      style={styles.menuItem}
+                      onPress={() => handleMoveToParent(candidate.id)}
+                    >
+                      <Text style={styles.menuItemText} numberOfLines={1}>
+                        📂 {candidate.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.menuCloseBtn}
+                onPress={() => setMoveNodeId(null)}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </>
     );
   }
 
@@ -374,25 +774,78 @@ export default function App() {
       <View style={styles.header}>
         <View>
           <Text style={styles.brand}>NEXUS</Text>
-          <Text style={styles.subtitle}>Segundo Cérebro • v0.1</Text>
+          <Text style={styles.subtitle}>
+            v0.2 • SQLite Offline ({nodes.length} notas)
+          </Text>
         </View>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => openCreateModal(null)}
-        >
-          <Text style={styles.primaryBtnText}>+ Espaço</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={toggleExpandAll}
+          >
+            <Text style={styles.secondaryBtnText}>
+              {anyExpanded ? '▸ Recolher' : '▾ Expandir'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => openCreateModal(null)}
+          >
+            <Text style={styles.primaryBtnText}>+ Espaço</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {activeTab === 'spaces' ? (
+      {activeTab === 'spaces' && (
         <ScrollView style={styles.scrollArea}>
           <Text style={styles.sectionHeading}>MEUS ESPAÇOS E TÓPICOS</Text>
-          <View style={styles.treeCard}>{renderTree(null, 0)}</View>
+          {nodes.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyHint}>
+                Nenhum tópico criado ainda. Toque em "+ Espaço" para começar!
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.treeCard}>{renderTree(null, 0)}</View>
+          )}
           <Text style={styles.tipText}>
-            Dica: Toque na seta (▸) para expandir, no texto para abrir como página ou no (+) para criar subtópicos.
+            Tudo salvo automaticamente no seu celular. Toque em (⋯) para reordenar, mover ou excluir.
           </Text>
         </ScrollView>
-      ) : (
+      )}
+
+      {activeTab === 'favorites' && (
+        <ScrollView style={styles.scrollArea}>
+          <Text style={styles.sectionHeading}>PÁGINAS FAVORITAS</Text>
+          {favoriteNodes.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyHint}>
+                Você ainda não favoritou nenhuma nota. Toque na estrela ☆ dentro de uma página para fixá-la aqui.
+              </Text>
+            </View>
+          ) : (
+            favoriteNodes.map((node) => {
+              const path = getBreadcrumbs(node)
+                .map((b) => b.title)
+                .join(' › ');
+              return (
+                <TouchableOpacity
+                  key={node.id}
+                  style={styles.searchResultCard}
+                  onPress={() => openPage(node.id)}
+                >
+                  <Text style={styles.searchResultTitle}>★ {node.title}</Text>
+                  <Text style={styles.favPathText} numberOfLines={1}>
+                    {path}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+      {activeTab === 'search' && (
         <View style={styles.scrollArea}>
           <TextInput
             style={styles.searchInput}
@@ -407,7 +860,7 @@ export default function App() {
               <TouchableOpacity
                 key={node.id}
                 style={styles.searchResultCard}
-                onPress={() => setSelectedNodeId(node.id)}
+                onPress={() => openPage(node.id)}
               >
                 <Text style={styles.searchResultTitle}>{node.title}</Text>
                 <Text style={styles.searchResultSnippet} numberOfLines={2}>
@@ -436,6 +889,20 @@ export default function App() {
 
         <TouchableOpacity
           style={styles.tabBtn}
+          onPress={() => setActiveTab('favorites')}
+        >
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'favorites' && styles.tabTextActive,
+            ]}
+          >
+            ★ Favoritos
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.tabBtn}
           onPress={() => setActiveTab('search')}
         >
           <Text
@@ -444,44 +911,12 @@ export default function App() {
               activeTab === 'search' && styles.tabTextActive,
             ]}
           >
-            ⌕ Busca Global
+            ⌕ Busca
           </Text>
         </TouchableOpacity>
       </View>
 
-      <Modal
-        visible={newTopicModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setNewTopicModalVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>
-              {newTopicParentId ? 'Novo Subtópico' : 'Novo Espaço'}
-            </Text>
-            <TextInput
-              style={styles.modalInput}
-              value={newTopicTitle}
-              onChangeText={setNewTopicTitle}
-              placeholder="Digite o nome..."
-              placeholderTextColor="#64748B"
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setNewTopicModalVisible(false)}
-                style={styles.modalCancel}
-              >
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={createTopic} style={styles.modalConfirm}>
-                <Text style={styles.modalConfirmText}>Criar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {renderModals()}
     </View>
   );
 }
@@ -497,10 +932,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   brand: {
     fontSize: 22,
@@ -509,13 +949,24 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   subtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
     marginTop: 2,
   },
+  secondaryBtn: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  secondaryBtnText: {
+    color: '#CBD5E1',
+    fontWeight: '600',
+    fontSize: 12,
+  },
   primaryBtn: {
     backgroundColor: '#6366F1',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
   },
@@ -541,13 +992,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#1E293B',
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   treeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingRight: 10,
+    paddingRight: 8,
     borderBottomWidth: 0.5,
     borderBottomColor: '#1E293B',
   },
@@ -575,25 +1026,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  addSubBtn: {
+  iconActionBtn: {
     width: 28,
     height: 28,
     borderRadius: 8,
     backgroundColor: '#1E293B',
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 6,
   },
-  addSubText: {
+  iconActionText: {
     color: '#94A3B8',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   tipText: {
     color: '#64748B',
     fontSize: 12,
     marginTop: 14,
+    marginBottom: 24,
     lineHeight: 18,
     paddingHorizontal: 4,
+  },
+  emptyBox: {
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+    padding: 18,
   },
   bottomBar: {
     flexDirection: 'row',
@@ -609,7 +1069,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: '#64748B',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   tabTextActive: {
@@ -619,19 +1079,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1E293B',
   },
+  pageHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pageHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   backBtn: {
     paddingVertical: 4,
-    paddingRight: 12,
+    paddingRight: 6,
   },
   backBtnText: {
     color: '#818CF8',
     fontSize: 15,
     fontWeight: '600',
+  },
+  homeChip: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  homeChipText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  savedBadge: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '600',
+    marginRight: 4,
   },
   favBtn: {
     paddingHorizontal: 10,
@@ -641,8 +1128,13 @@ const styles = StyleSheet.create({
   },
   favBtnText: {
     color: '#FBBF24',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  menuDotsText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '700',
   },
   pageScroll: {
     flex: 1,
@@ -673,7 +1165,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   pageContentInput: {
-    minHeight: 170,
+    minHeight: 180,
     fontSize: 15,
     lineHeight: 23,
     color: '#CBD5E1',
@@ -714,6 +1206,7 @@ const styles = StyleSheet.create({
   emptyHint: {
     color: '#64748B',
     fontSize: 13,
+    lineHeight: 19,
   },
   subpageCard: {
     paddingVertical: 10,
@@ -784,11 +1277,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  favPathText: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 2,
+  },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     justifyContent: 'center',
-    padding: 24,
+    padding: 22,
   },
   modalBox: {
     backgroundColor: '#111827',
@@ -836,5 +1334,44 @@ const styles = StyleSheet.create({
   modalConfirmText: {
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  menuItem: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  menuItemText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  menuRowSplit: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  menuHalfBtn: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  menuDanger: {
+    backgroundColor: '#450A0A',
+    borderWidth: 1,
+    borderColor: '#7F1D1D',
+  },
+  menuDangerText: {
+    color: '#FCA5A5',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  menuCloseBtn: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
   },
 });
