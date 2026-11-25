@@ -20,12 +20,14 @@ import {
   deleteNodesByIds,
   exportBackupJson,
   getAllNodes,
+  getAppMeta,
   getNodeSnapshots,
   importBackupJson,
   initDatabase,
   insertNode,
   saveNodeSnapshot,
   setAllNodesExpanded,
+  setAppMeta,
   setNodeExpanded,
   setNodeFavorite,
   swapSiblingOrder,
@@ -36,7 +38,13 @@ import BlockEditor from './src/components/BlockEditor';
 import GraphView from './src/components/GraphView';
 import { TagsView, TasksView } from './src/components/BrainViews';
 import {
+  DARK_THEME,
+  DEFAULT_EDITOR_PREFS,
+  DEFAULT_TOOLBAR_IDS,
+  EditorPrefs,
+  LIGHT_THEME,
   PAGE_TEMPLATES,
+  ToolbarToolId,
   blocksToMarkdown,
   buildTemplateContent,
   extractPlainTextFromContent,
@@ -102,6 +110,15 @@ export default function App() {
   const [pageHistory, setPageHistory] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [editorPrefs, setEditorPrefs] = useState<EditorPrefs>(
+    DEFAULT_EDITOR_PREFS
+  );
+  const [toolbarIds, setToolbarIds] = useState<ToolbarToolId[]>(
+    DEFAULT_TOOLBAR_IDS
+  );
+  const [isZenMode, setIsZenMode] = useState(false);
+
   const [newTopicModalVisible, setNewTopicModalVisible] = useState(false);
   const [newTopicParentId, setNewTopicParentId] = useState<string | null>(null);
   const [newTopicTitle, setNewTopicTitle] = useState('');
@@ -118,10 +135,28 @@ export default function App() {
   const [backupModalVisible, setBackupModalVisible] = useState(false);
   const [backupJsonInput, setBackupJsonInput] = useState('');
 
+  const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
+
   useEffect(() => {
     try {
       initDatabase();
       setNodes(getAllNodes());
+
+      const savedTheme = getAppMeta('theme');
+      if (savedTheme === 'light') setIsDarkMode(false);
+
+      const savedPrefs = getAppMeta('editor_prefs');
+      if (savedPrefs) {
+        setEditorPrefs(JSON.parse(savedPrefs) as EditorPrefs);
+      }
+
+      const savedToolbar = getAppMeta('toolbar_config');
+      if (savedToolbar) {
+        const parsedIds = JSON.parse(savedToolbar) as ToolbarToolId[];
+        if (Array.isArray(parsedIds) && parsedIds.length > 0) {
+          setToolbarIds(parsedIds);
+        }
+      }
     } catch (error) {
       Alert.alert('Erro ao abrir banco', String(error));
     }
@@ -167,6 +202,10 @@ export default function App() {
         setNewTopicModalVisible(false);
         return true;
       }
+      if (isZenMode) {
+        setIsZenMode(false);
+        return true;
+      }
       if (pageHistory.length > 0) {
         setPageHistory((prev) => prev.slice(0, -1));
         return true;
@@ -185,9 +224,26 @@ export default function App() {
     moveNodeId,
     menuNodeId,
     newTopicModalVisible,
+    isZenMode,
     pageHistory,
     activeTab,
   ]);
+
+  const toggleTheme = () => {
+    const nextDark = !isDarkMode;
+    setIsDarkMode(nextDark);
+    setAppMeta('theme', nextDark ? 'dark' : 'light');
+  };
+
+  const handlePrefsChange = (nextPrefs: EditorPrefs) => {
+    setEditorPrefs(nextPrefs);
+    setAppMeta('editor_prefs', JSON.stringify(nextPrefs));
+  };
+
+  const handleToolbarChange = (nextIds: ToolbarToolId[]) => {
+    setToolbarIds(nextIds);
+    setAppMeta('toolbar_config', JSON.stringify(nextIds));
+  };
 
   const openPage = (id: string) => {
     setPageHistory((prev) => {
@@ -197,10 +253,12 @@ export default function App() {
   };
 
   const goBackPage = () => {
+    setIsZenMode(false);
     setPageHistory((prev) => prev.slice(0, -1));
   };
 
   const goHome = () => {
+    setIsZenMode(false);
     setPageHistory([]);
   };
 
@@ -492,12 +550,20 @@ export default function App() {
 
       return (
         <View key={node.id}>
-          <View style={[styles.treeRow, { paddingLeft: 10 + depth * 18 }]}>
+          <View
+            style={[
+              styles.treeRow,
+              {
+                paddingLeft: 10 + depth * 18,
+                borderBottomColor: theme.border,
+              },
+            ]}
+          >
             <TouchableOpacity
               onPress={() => toggleExpand(node.id)}
               style={styles.expandBtn}
             >
-              <Text style={styles.expandIcon}>
+              <Text style={[styles.expandIcon, { color: theme.textDim }]}>
                 {hasChildren ? (node.isExpanded ? '▾' : '▸') : '•'}
               </Text>
             </TouchableOpacity>
@@ -506,7 +572,10 @@ export default function App() {
               style={styles.treeTitleArea}
               onPress={() => openPage(node.id)}
             >
-              <Text style={styles.treeTitle} numberOfLines={1}>
+              <Text
+                style={[styles.treeTitle, { color: theme.text }]}
+                numberOfLines={1}
+              >
                 {node.isFavorite ? '★ ' : ''}
                 {node.title}
               </Text>
@@ -519,16 +588,26 @@ export default function App() {
 
             <TouchableOpacity
               onPress={() => openCreateModal(node.id)}
-              style={styles.iconActionBtn}
+              style={[
+                styles.iconActionBtn,
+                { backgroundColor: theme.surfaceAlt },
+              ]}
             >
-              <Text style={styles.iconActionText}>+</Text>
+              <Text style={[styles.iconActionText, { color: theme.textMuted }]}>
+                +
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => setMenuNodeId(node.id)}
-              style={styles.iconActionBtn}
+              style={[
+                styles.iconActionBtn,
+                { backgroundColor: theme.surfaceAlt },
+              ]}
             >
-              <Text style={styles.iconActionText}>⋯</Text>
+              <Text style={[styles.iconActionText, { color: theme.textMuted }]}>
+                ⋯
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -572,20 +651,34 @@ export default function App() {
           onRequestClose={() => setNewTopicModalVisible(false)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={styles.modalBox}>
-              <Text style={styles.modalTitle}>
+            <View
+              style={[
+                styles.modalBox,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
                 {newTopicParentId ? 'Novo Subtópico' : 'Novo Espaço'}
               </Text>
               <TextInput
-                style={styles.modalInput}
+                style={[
+                  styles.modalInput,
+                  {
+                    backgroundColor: theme.bg,
+                    borderColor: theme.border,
+                    color: theme.text,
+                  },
+                ]}
                 value={newTopicTitle}
                 onChangeText={setNewTopicTitle}
                 placeholder="Digite o nome..."
-                placeholderTextColor="#64748B"
+                placeholderTextColor={theme.textDim}
                 autoFocus
               />
 
-              <Text style={styles.templateHeading}>ESCOLHER MODELO:</Text>
+              <Text style={[styles.templateHeading, { color: theme.textDim }]}>
+                ESCOLHER MODELO:
+              </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -598,15 +691,21 @@ export default function App() {
                       key={tpl.id}
                       style={[
                         styles.templateChip,
-                        active && styles.templateChipActive,
+                        {
+                          backgroundColor: active
+                            ? theme.accent
+                            : theme.surfaceAlt,
+                          borderColor: active ? theme.accent : theme.border,
+                        },
                       ]}
                       onPress={() => setSelectedTemplateId(tpl.id)}
                     >
                       <Text
-                        style={[
-                          styles.templateChipText,
-                          active && styles.templateChipTextActive,
-                        ]}
+                        style={{
+                          color: active ? '#FFF' : theme.textMuted,
+                          fontSize: 12,
+                          fontWeight: '600',
+                        }}
                       >
                         {tpl.icon} {tpl.label}
                       </Text>
@@ -620,11 +719,16 @@ export default function App() {
                   onPress={() => setNewTopicModalVisible(false)}
                   style={styles.modalCancel}
                 >
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
+                  <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                    Cancelar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={createTopic}
-                  style={styles.modalConfirm}
+                  style={[
+                    styles.modalConfirm,
+                    { backgroundColor: theme.accent },
+                  ]}
                 >
                   <Text style={styles.modalConfirmText}>Criar</Text>
                 </TouchableOpacity>
@@ -640,14 +744,26 @@ export default function App() {
           onRequestClose={() => setMenuNodeId(null)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.modalBox, { maxHeight: '84%' }]}>
-              <Text style={styles.modalTitle} numberOfLines={1}>
+            <View
+              style={[
+                styles.modalBox,
+                {
+                  maxHeight: '84%',
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.modalTitle, { color: theme.text }]}
+                numberOfLines={1}
+              >
                 {menuNode?.title}
               </Text>
 
               <ScrollView>
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     const id = menuNode.id;
@@ -655,11 +771,13 @@ export default function App() {
                     openPage(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>📄 Abrir como página</Text>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
+                    📄 Abrir como página
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     const id = menuNode.id;
@@ -667,18 +785,20 @@ export default function App() {
                     openCreateModal(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>➕ Criar subtópico dentro</Text>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
+                    ➕ Criar subtópico dentro
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     toggleFavorite(menuNode.id);
                     setMenuNodeId(null);
                   }}
                 >
-                  <Text style={styles.menuItemText}>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
                     {menuNode?.isFavorite
                       ? '☆ Remover dos favoritos'
                       : '★ Adicionar aos favoritos'}
@@ -687,25 +807,35 @@ export default function App() {
 
                 <View style={styles.menuRowSplit}>
                   <TouchableOpacity
-                    style={styles.menuHalfBtn}
+                    style={[
+                      styles.menuHalfBtn,
+                      { backgroundColor: theme.surfaceAlt },
+                    ]}
                     onPress={() => {
                       if (menuNode) moveSibling(menuNode.id, 'up');
                     }}
                   >
-                    <Text style={styles.menuItemText}>↑ Subir</Text>
+                    <Text style={[styles.menuItemText, { color: theme.text }]}>
+                      ↑ Subir
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.menuHalfBtn}
+                    style={[
+                      styles.menuHalfBtn,
+                      { backgroundColor: theme.surfaceAlt },
+                    ]}
                     onPress={() => {
                       if (menuNode) moveSibling(menuNode.id, 'down');
                     }}
                   >
-                    <Text style={styles.menuItemText}>↓ Descer</Text>
+                    <Text style={[styles.menuItemText, { color: theme.text }]}>
+                      ↓ Descer
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     const id = menuNode.id;
@@ -713,24 +843,26 @@ export default function App() {
                     setMoveNodeId(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>📁 Mover para outro local</Text>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
+                    📁 Mover para outro local
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     handleSaveSnapshot(menuNode);
                     setMenuNodeId(null);
                   }}
                 >
-                  <Text style={styles.menuItemText}>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
                     💾 Salvar versão (Snapshot)
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     const id = menuNode.id;
@@ -738,13 +870,13 @@ export default function App() {
                     openSnapshotsHistory(id);
                   }}
                 >
-                  <Text style={styles.menuItemText}>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
                     🕒 Histórico de versões
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => {
                     if (!menuNode) return;
                     const target = menuNode;
@@ -752,7 +884,7 @@ export default function App() {
                     handleExportMarkdown(target);
                   }}
                 >
-                  <Text style={[styles.menuItemText, { color: '#7DD3FC' }]}>
+                  <Text style={[styles.menuItemText, { color: '#38BDF8' }]}>
                     📤 Exportar como Markdown
                   </Text>
                 </TouchableOpacity>
@@ -771,7 +903,9 @@ export default function App() {
                 style={styles.menuCloseBtn}
                 onPress={() => setMenuNodeId(null)}
               >
-                <Text style={styles.modalCancelText}>Fechar</Text>
+                <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                  Fechar
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -784,16 +918,27 @@ export default function App() {
           onRequestClose={() => setMoveNodeId(null)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.modalBox, { maxHeight: '75%' }]}>
-              <Text style={styles.modalTitle}>
+            <View
+              style={[
+                styles.modalBox,
+                {
+                  maxHeight: '75%',
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
                 Mover "{moveNode?.title}" para:
               </Text>
               <ScrollView>
                 <TouchableOpacity
-                  style={styles.menuItem}
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
                   onPress={() => handleMoveToParent(null)}
                 >
-                  <Text style={styles.menuItemText}>🏠 Início (Raiz)</Text>
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
+                    🏠 Início (Raiz)
+                  </Text>
                 </TouchableOpacity>
 
                 {nodes
@@ -801,10 +946,16 @@ export default function App() {
                   .map((candidate) => (
                     <TouchableOpacity
                       key={candidate.id}
-                      style={styles.menuItem}
+                      style={[
+                        styles.menuItem,
+                        { backgroundColor: theme.surfaceAlt },
+                      ]}
                       onPress={() => handleMoveToParent(candidate.id)}
                     >
-                      <Text style={styles.menuItemText} numberOfLines={1}>
+                      <Text
+                        style={[styles.menuItemText, { color: theme.text }]}
+                        numberOfLines={1}
+                      >
                         📂 {candidate.title}
                       </Text>
                     </TouchableOpacity>
@@ -815,7 +966,9 @@ export default function App() {
                 style={styles.menuCloseBtn}
                 onPress={() => setMoveNodeId(null)}
               >
-                <Text style={styles.modalCancelText}>Cancelar</Text>
+                <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                  Cancelar
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -828,24 +981,41 @@ export default function App() {
           onRequestClose={() => setHistoryModalNodeId(null)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.modalBox, { maxHeight: '75%' }]}>
-              <Text style={styles.modalTitle}>🕒 Histórico de Versões</Text>
+            <View
+              style={[
+                styles.modalBox,
+                {
+                  maxHeight: '75%',
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                🕒 Histórico de Versões
+              </Text>
               {snapshots.length === 0 ? (
-                <Text style={styles.emptyHint}>
-                  Nenhuma versão salva para esta nota ainda. Use "Salvar versão (Snapshot)" no menu ⋯ antes de fazer grandes mudanças!
+                <Text style={{ color: theme.textDim, fontSize: 13 }}>
+                  Nenhuma versão salva para esta nota ainda. Use "Salvar versão (Snapshot)" no menu ⋯ antes de grandes mudanças!
                 </Text>
               ) : (
                 <ScrollView>
                   {snapshots.map((snap) => (
                     <TouchableOpacity
                       key={snap.id}
-                      style={styles.menuItem}
+                      style={[
+                        styles.menuItem,
+                        { backgroundColor: theme.surfaceAlt },
+                      ]}
                       onPress={() => restoreSnapshot(snap)}
                     >
-                      <Text style={styles.menuItemText}>
+                      <Text style={[styles.menuItemText, { color: theme.text }]}>
                         ↺ {formatDateTime(snap.createdAt)}
                       </Text>
-                      <Text style={styles.snapPreview} numberOfLines={1}>
+                      <Text
+                        style={{ color: theme.textDim, fontSize: 12, marginTop: 3 }}
+                        numberOfLines={1}
+                      >
                         {snap.title} — {extractPlainTextFromContent(snap.content)}
                       </Text>
                     </TouchableOpacity>
@@ -857,7 +1027,9 @@ export default function App() {
                 style={styles.menuCloseBtn}
                 onPress={() => setHistoryModalNodeId(null)}
               >
-                <Text style={styles.modalCancelText}>Fechar</Text>
+                <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                  Fechar
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -870,9 +1042,20 @@ export default function App() {
           onRequestClose={() => setBackupModalVisible(false)}
         >
           <View style={styles.modalBackdrop}>
-            <View style={[styles.modalBox, { maxHeight: '82%' }]}>
-              <Text style={styles.modalTitle}>💾 Backup do Segundo Cérebro</Text>
-              <Text style={styles.backupSubtitle}>
+            <View
+              style={[
+                styles.modalBox,
+                {
+                  maxHeight: '82%',
+                  backgroundColor: theme.surface,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                💾 Backup do Segundo Cérebro
+              </Text>
+              <Text style={{ color: theme.textMuted, fontSize: 13, marginBottom: 12 }}>
                 Exporte todas as suas {nodes.length} notas em JSON para guardar no Google Drive/Arquivos, ou cole um backup para restaurar.
               </Text>
 
@@ -885,16 +1068,23 @@ export default function App() {
                 </Text>
               </TouchableOpacity>
 
-              <Text style={styles.templateHeading}>
+              <Text style={[styles.templateHeading, { color: theme.textDim }]}>
                 RESTAURAR BACKUP (COLAR JSON):
               </Text>
               <TextInput
-                style={styles.backupInput}
+                style={[
+                  styles.backupInput,
+                  {
+                    backgroundColor: theme.bg,
+                    borderColor: theme.border,
+                    color: theme.text,
+                  },
+                ]}
                 value={backupJsonInput}
                 onChangeText={setBackupJsonInput}
                 multiline
                 placeholder="Cole aqui o texto JSON exportado..."
-                placeholderTextColor="#475569"
+                placeholderTextColor={theme.textDim}
               />
 
               <View style={styles.modalActions}>
@@ -902,11 +1092,16 @@ export default function App() {
                   onPress={() => setBackupModalVisible(false)}
                   style={styles.modalCancel}
                 >
-                  <Text style={styles.modalCancelText}>Fechar</Text>
+                  <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                    Fechar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleImportBackup}
-                  style={styles.modalConfirm}
+                  style={[
+                    styles.modalConfirm,
+                    { backgroundColor: theme.accent },
+                  ]}
                 >
                   <Text style={styles.modalConfirmText}>Restaurar</Text>
                 </TouchableOpacity>
@@ -928,62 +1123,93 @@ export default function App() {
     const backlinks = getBacklinks(selectedNode.title, selectedNode.id);
 
     return (
-      <View style={styles.container}>
-        <StatusBar style="light" />
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
-        <View style={styles.pageHeader}>
-          <View style={styles.pageHeaderLeft}>
-            <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
-              <Text style={styles.backBtnText}>← Voltar</Text>
-            </TouchableOpacity>
-            {pageHistory.length > 1 && (
-              <TouchableOpacity onPress={goHome} style={styles.homeChip}>
-                <Text style={styles.homeChipText}>Início</Text>
+        {!isZenMode && (
+          <View
+            style={[styles.pageHeader, { borderBottomColor: theme.border }]}
+          >
+            <View style={styles.pageHeaderLeft}>
+              <TouchableOpacity onPress={goBackPage} style={styles.backBtn}>
+                <Text style={{ color: theme.accent, fontSize: 15, fontWeight: '600' }}>
+                  ← Voltar
+                </Text>
               </TouchableOpacity>
-            )}
-          </View>
+              {pageHistory.length > 1 && (
+                <TouchableOpacity
+                  onPress={goHome}
+                  style={[
+                    styles.homeChip,
+                    { backgroundColor: theme.surfaceAlt },
+                  ]}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+                    Início
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-          <View style={styles.pageHeaderRight}>
-            <Text style={styles.savedBadge}>
-              Salvo ✓ {formatTime(selectedNode.updatedAt)}
-            </Text>
-            <TouchableOpacity
-              onPress={() => toggleFavorite(selectedNode.id)}
-              style={styles.favBtn}
-            >
-              <Text style={styles.favBtnText}>
-                {selectedNode.isFavorite ? '★' : '☆'}
+            <View style={styles.pageHeaderRight}>
+              <Text style={styles.savedBadge}>
+                Salvo ✓ {formatTime(selectedNode.updatedAt)}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setMenuNodeId(selectedNode.id)}
-              style={styles.favBtn}
-            >
-              <Text style={styles.menuDotsText}>⋯</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={toggleTheme}
+                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+              >
+                <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => toggleFavorite(selectedNode.id)}
+                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+              >
+                <Text style={styles.favBtnText}>
+                  {selectedNode.isFavorite ? '★' : '☆'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setMenuNodeId(selectedNode.id)}
+                style={[styles.favBtn, { backgroundColor: theme.surfaceAlt }]}
+              >
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                  ⋯
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
 
         <ScrollView style={styles.pageScroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.breadcrumbRow}>
-            {breadcrumbs.map((crumb, idx) => (
-              <View key={crumb.id} style={styles.breadcrumbItem}>
-                {idx > 0 && <Text style={styles.breadcrumbSep}> › </Text>}
-                <TouchableOpacity onPress={() => openPage(crumb.id)}>
-                  <Text style={styles.breadcrumbText}>{crumb.title}</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
+          {!isZenMode && (
+            <View style={styles.breadcrumbRow}>
+              {breadcrumbs.map((crumb, idx) => (
+                <View key={crumb.id} style={styles.breadcrumbItem}>
+                  {idx > 0 && (
+                    <Text style={{ color: theme.textDim, fontSize: 12 }}>
+                      {' '}
+                      ›{' '}
+                    </Text>
+                  )}
+                  <TouchableOpacity onPress={() => openPage(crumb.id)}>
+                    <Text style={{ color: theme.textDim, fontSize: 12 }}>
+                      {crumb.title}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
 
           <TextInput
-            style={styles.pageTitleInput}
+            style={[styles.pageTitleInput, { color: theme.text }]}
             value={selectedNode.title}
             onChangeText={(text) =>
               handleEditPage(selectedNode.id, text, selectedNode.content)
             }
             placeholder="Título da página"
-            placeholderTextColor="#64748B"
+            placeholderTextColor={theme.textDim}
           />
 
           <BlockEditor
@@ -992,78 +1218,139 @@ export default function App() {
             availableNoteTitles={availableNoteTitles.filter(
               (t) => t !== selectedNode.title
             )}
+            theme={theme}
+            prefs={editorPrefs}
+            toolbarIds={toolbarIds}
+            isZenMode={isZenMode}
+            onChangePrefs={handlePrefsChange}
+            onChangeToolbar={handleToolbarChange}
+            onToggleZenMode={() => setIsZenMode((z) => !z)}
             onChangeSerialized={(serialized) =>
               handleEditPage(selectedNode.id, selectedNode.title, serialized)
             }
             onPressInternalLink={openLinkedNoteByTitle}
           />
 
-          <View style={styles.sectionBox}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionLabel}>
-                Subtópicos ({subpages.length})
-              </Text>
-              <TouchableOpacity onPress={() => openCreateModal(selectedNode.id)}>
-                <Text style={styles.sectionAction}>+ Novo subtópico</Text>
-              </TouchableOpacity>
-            </View>
-            {subpages.length === 0 ? (
-              <Text style={styles.emptyHint}>Nenhum subtópico ainda.</Text>
-            ) : (
-              subpages.map((sub) => (
-                <TouchableOpacity
-                  key={sub.id}
-                  style={styles.subpageCard}
-                  onPress={() => openPage(sub.id)}
-                >
-                  <Text style={styles.subpageTitle}>📄 {sub.title}</Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-
-          {(tags.length > 0 || links.length > 0) && (
-            <View style={styles.sectionBox}>
-              <Text style={styles.sectionLabel}>Conexões e Tags</Text>
-              <View style={styles.chipsWrap}>
-                {tags.map((tag) => (
-                  <View key={tag} style={styles.tagChip}>
-                    <Text style={styles.tagChipText}>{tag}</Text>
-                  </View>
-                ))}
-                {links.map((link) => (
+          {!isZenMode && (
+            <>
+              <View
+                style={[
+                  styles.sectionBox,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                    Subtópicos ({subpages.length})
+                  </Text>
                   <TouchableOpacity
-                    key={link}
-                    style={styles.linkChip}
-                    onPress={() => openLinkedNoteByTitle(link)}
+                    onPress={() => openCreateModal(selectedNode.id)}
                   >
-                    <Text style={styles.linkChipText}>[[{link}]]</Text>
+                    <Text
+                      style={{
+                        color: theme.accent,
+                        fontSize: 13,
+                        fontWeight: '600',
+                        marginBottom: 8,
+                      }}
+                    >
+                      + Novo subtópico
+                    </Text>
                   </TouchableOpacity>
-                ))}
+                </View>
+                {subpages.length === 0 ? (
+                  <Text style={{ color: theme.textDim, fontSize: 13 }}>
+                    Nenhum subtópico ainda.
+                  </Text>
+                ) : (
+                  subpages.map((sub) => (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={[
+                        styles.subpageCard,
+                        { backgroundColor: theme.surfaceAlt },
+                      ]}
+                      onPress={() => openPage(sub.id)}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                        📄 {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
-            </View>
-          )}
 
-          <View style={[styles.sectionBox, { marginBottom: 32 }]}>
-            <Text style={styles.sectionLabel}>
-              Backlinks ({backlinks.length})
-            </Text>
-            {backlinks.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
-              </Text>
-            ) : (
-              backlinks.map((bl) => (
-                <TouchableOpacity
-                  key={bl.id}
-                  style={styles.subpageCard}
-                  onPress={() => openPage(bl.id)}
+              {(tags.length > 0 || links.length > 0) && (
+                <View
+                  style={[
+                    styles.sectionBox,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: theme.border,
+                    },
+                  ]}
                 >
-                  <Text style={styles.subpageTitle}>🔗 {bl.title}</Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
+                  <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                    Conexões e Tags
+                  </Text>
+                  <View style={styles.chipsWrap}>
+                    {tags.map((tag) => (
+                      <View key={tag} style={styles.tagChip}>
+                        <Text style={styles.tagChipText}>{tag}</Text>
+                      </View>
+                    ))}
+                    {links.map((link) => (
+                      <TouchableOpacity
+                        key={link}
+                        style={styles.linkChip}
+                        onPress={() => openLinkedNoteByTitle(link)}
+                      >
+                        <Text style={styles.linkChipText}>[[{link}]]</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View
+                style={[
+                  styles.sectionBox,
+                  {
+                    marginBottom: 32,
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.sectionLabel, { color: theme.textDim }]}>
+                  Backlinks ({backlinks.length})
+                </Text>
+                {backlinks.length === 0 ? (
+                  <Text style={{ color: theme.textDim, fontSize: 13 }}>
+                    Nenhuma outra nota cita [[{selectedNode.title}]] ainda.
+                  </Text>
+                ) : (
+                  backlinks.map((bl) => (
+                    <TouchableOpacity
+                      key={bl.id}
+                      style={[
+                        styles.subpageCard,
+                        { backgroundColor: theme.surfaceAlt },
+                      ]}
+                      onPress={() => openPage(bl.id)}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                        🔗 {bl.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            </>
+          )}
         </ScrollView>
 
         {renderModals()}
@@ -1072,35 +1359,46 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <View>
-          <Text style={styles.brand}>NEXUS</Text>
-          <Text style={styles.subtitle}>
-            v0.5 • Segundo Cérebro ({nodes.length} notas)
+          <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
+          <Text style={[styles.subtitle, { color: theme.textDim }]}>
+            v0.6 • Super Editor ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.secondaryBtn}
+            style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]}
+            onPress={toggleTheme}
+          >
+            <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]}
             onPress={() => setBackupModalVisible(true)}
           >
-            <Text style={styles.secondaryBtnText}>⚙</Text>
+            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+              ⚙
+            </Text>
           </TouchableOpacity>
           {activeTab === 'spaces' && (
             <TouchableOpacity
-              style={styles.secondaryBtn}
+              style={[
+                styles.secondaryBtn,
+                { backgroundColor: theme.surfaceAlt },
+              ]}
               onPress={toggleExpandAll}
             >
-              <Text style={styles.secondaryBtnText}>
+              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
                 {anyExpanded ? '▸' : '▾'}
               </Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={styles.primaryBtn}
+            style={[styles.primaryBtn, { backgroundColor: theme.accent }]}
             onPress={() => openCreateModal(null)}
           >
             <Text style={styles.primaryBtnText}>+ Espaço</Text>
@@ -1112,7 +1410,9 @@ export default function App() {
         <ScrollView style={styles.scrollArea}>
           {favoriteNodes.length > 0 && (
             <View style={styles.favStripWrap}>
-              <Text style={styles.sectionHeading}>★ FAVORITOS</Text>
+              <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
+                ★ FAVORITOS
+              </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1121,7 +1421,13 @@ export default function App() {
                 {favoriteNodes.map((fav) => (
                   <TouchableOpacity
                     key={fav.id}
-                    style={styles.favChip}
+                    style={[
+                      styles.favChip,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: theme.border,
+                      },
+                    ]}
                     onPress={() => openPage(fav.id)}
                   >
                     <Text style={styles.favChipText} numberOfLines={1}>
@@ -1133,18 +1439,32 @@ export default function App() {
             </View>
           )}
 
-          <Text style={styles.sectionHeading}>MEUS ESPAÇOS E TÓPICOS</Text>
+          <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
+            MEUS ESPAÇOS E TÓPICOS
+          </Text>
           {nodes.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyHint}>
+            <View
+              style={[
+                styles.emptyBox,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              <Text style={{ color: theme.textDim, fontSize: 13 }}>
                 Nenhum tópico criado ainda. Toque em "+ Espaço" para começar!
               </Text>
             </View>
           ) : (
-            <View style={styles.treeCard}>{renderTree(null, 0)}</View>
+            <View
+              style={[
+                styles.treeCard,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+              ]}
+            >
+              {renderTree(null, 0)}
+            </View>
           )}
-          <Text style={styles.tipText}>
-            Dica: Use Modelos prontos ao criar um espaço, insira Tabelas no editor e faça backups pelo botão ⚙!
+          <Text style={[styles.tipText, { color: theme.textDim }]}>
+            Novidade v0.6: 34 tipos de blocos (+), barra configurável (🔧), Kanban, Gráficos, Abas, Modo Zen (🧘) e Tema Claro/Escuro!
           </Text>
         </ScrollView>
       )}
@@ -1168,25 +1488,43 @@ export default function App() {
       {activeTab === 'search' && (
         <View style={styles.scrollArea}>
           <TextInput
-            style={styles.searchInput}
+            style={[
+              styles.searchInput,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                color: theme.text,
+              },
+            ]}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar notas, #tags, tabelas ou conteúdo..."
-            placeholderTextColor="#64748B"
+            placeholder="Buscar notas, #tags, tabelas, kanban..."
+            placeholderTextColor={theme.textDim}
             autoFocus
           />
           <ScrollView>
             {filteredSearchNodes.map((node) => (
               <TouchableOpacity
                 key={node.id}
-                style={styles.searchResultCard}
+                style={[
+                  styles.searchResultCard,
+                  {
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                  },
+                ]}
                 onPress={() => openPage(node.id)}
               >
-                <Text style={styles.searchResultTitle}>
+                <Text
+                  style={[styles.searchResultTitle, { color: theme.text }]}
+                >
                   {node.isFavorite ? '★ ' : ''}
                   {node.title}
                 </Text>
-                <Text style={styles.searchResultSnippet} numberOfLines={2}>
+                <Text
+                  style={[styles.searchResultSnippet, { color: theme.textDim }]}
+                  numberOfLines={2}
+                >
                   {extractPlainTextFromContent(node.content)}
                 </Text>
               </TouchableOpacity>
@@ -1195,116 +1533,47 @@ export default function App() {
         </View>
       )}
 
-      <View style={styles.bottomBar}>
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => setActiveTab('spaces')}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === 'spaces' && styles.tabTextActive,
-            ]}
-          >
-            ☰
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'spaces' && styles.tabTextActive,
-            ]}
-          >
-            Espaços
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => setActiveTab('graph')}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === 'graph' && styles.tabTextActive,
-            ]}
-          >
-            🕸
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'graph' && styles.tabTextActive,
-            ]}
-          >
-            Grafo
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => setActiveTab('tags')}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === 'tags' && styles.tabTextActive,
-            ]}
-          >
-            #
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'tags' && styles.tabTextActive,
-            ]}
-          >
-            Tags
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => setActiveTab('tasks')}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === 'tasks' && styles.tabTextActive,
-            ]}
-          >
-            ☑
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'tasks' && styles.tabTextActive,
-            ]}
-          >
-            Tarefas
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.tabBtn}
-          onPress={() => setActiveTab('search')}
-        >
-          <Text
-            style={[
-              styles.tabIcon,
-              activeTab === 'search' && styles.tabTextActive,
-            ]}
-          >
-            ⌕
-          </Text>
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'search' && styles.tabTextActive,
-            ]}
-          >
-            Busca
-          </Text>
-        </TouchableOpacity>
+      <View
+        style={[
+          styles.bottomBar,
+          { backgroundColor: theme.surface, borderTopColor: theme.border },
+        ]}
+      >
+        {(
+          [
+            { key: 'spaces', icon: '☰', label: 'Espaços' },
+            { key: 'graph', icon: '🕸', label: 'Grafo' },
+            { key: 'tags', icon: '#', label: 'Tags' },
+            { key: 'tasks', icon: '☑', label: 'Tarefas' },
+            { key: 'search', icon: '⌕', label: 'Busca' },
+          ] as { key: MainTab; icon: string; label: string }[]
+        ).map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tabBtn}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text
+                style={[
+                  styles.tabIcon,
+                  { color: active ? theme.accent : theme.textDim },
+                ]}
+              >
+                {tab.icon}
+              </Text>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: active ? theme.accent : theme.textDim },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {renderModals()}
@@ -1315,7 +1584,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F17',
     paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 28) : 0,
     paddingBottom: 12,
   },
@@ -1326,37 +1594,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   brand: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#F8FAFC',
     letterSpacing: 2,
   },
   subtitle: {
     fontSize: 11,
-    color: '#94A3B8',
     marginTop: 2,
   },
   secondaryBtn: {
-    backgroundColor: '#1E293B',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
   },
-  secondaryBtnText: {
-    color: '#CBD5E1',
-    fontWeight: '600',
-    fontSize: 13,
-  },
   primaryBtn: {
-    backgroundColor: '#6366F1',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
@@ -1378,31 +1636,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   favChip: {
-    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#334155',
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 7,
     maxWidth: 170,
   },
   favChipText: {
-    color: '#FBBF24',
+    color: '#F59E0B',
     fontSize: 12,
     fontWeight: '700',
   },
   sectionHeading: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#64748B',
     letterSpacing: 1.2,
     marginBottom: 10,
   },
   treeCard: {
-    backgroundColor: '#111827',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1E293B',
     paddingVertical: 4,
   },
   treeRow: {
@@ -1411,7 +1664,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingRight: 8,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#1E293B',
   },
   expandBtn: {
     width: 28,
@@ -1420,7 +1672,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   expandIcon: {
-    color: '#94A3B8',
     fontSize: 15,
   },
   treeTitleArea: {
@@ -1428,7 +1679,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   treeTitle: {
-    color: '#E2E8F0',
     fontSize: 15,
     fontWeight: '600',
   },
@@ -1441,18 +1691,15 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: '#1E293B',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 6,
   },
   iconActionText: {
-    color: '#94A3B8',
     fontSize: 15,
     fontWeight: '700',
   },
   tipText: {
-    color: '#64748B',
     fontSize: 12,
     marginTop: 14,
     marginBottom: 24,
@@ -1460,17 +1707,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   emptyBox: {
-    backgroundColor: '#111827',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1E293B',
     padding: 18,
   },
   bottomBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#1E293B',
-    backgroundColor: '#0F172A',
     paddingVertical: 6,
   },
   tabBtn: {
@@ -1479,18 +1722,13 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   tabIcon: {
-    color: '#64748B',
     fontSize: 16,
     fontWeight: '700',
   },
   tabLabel: {
-    color: '#64748B',
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
-  },
-  tabTextActive: {
-    color: '#818CF8',
   },
   pageHeader: {
     flexDirection: 'row',
@@ -1499,7 +1737,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
   },
   pageHeaderLeft: {
     flexDirection: 'row',
@@ -1515,41 +1752,24 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingRight: 6,
   },
-  backBtnText: {
-    color: '#818CF8',
-    fontSize: 15,
-    fontWeight: '600',
-  },
   homeChip: {
-    backgroundColor: '#1E293B',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  homeChipText: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '600',
-  },
   savedBadge: {
-    color: '#34D399',
+    color: '#10B981',
     fontSize: 11,
     fontWeight: '600',
-    marginRight: 4,
+    marginRight: 2,
   },
   favBtn: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#1E293B',
   },
   favBtnText: {
-    color: '#FBBF24',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  menuDotsText: {
-    color: '#CBD5E1',
+    color: '#F59E0B',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1567,26 +1787,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  breadcrumbSep: {
-    color: '#475569',
-    fontSize: 12,
-  },
-  breadcrumbText: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
   pageTitleInput: {
     fontSize: 25,
     fontWeight: '800',
-    color: '#F8FAFC',
     marginBottom: 10,
   },
   sectionBox: {
     marginBottom: 16,
-    backgroundColor: '#111827',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#1E293B',
     padding: 14,
   },
   sectionHeaderRow: {
@@ -1596,34 +1805,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionLabel: {
-    color: '#94A3B8',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
     marginBottom: 8,
   },
-  sectionAction: {
-    color: '#818CF8',
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptyHint: {
-    color: '#64748B',
-    fontSize: 13,
-    lineHeight: 19,
-  },
   subpageCard: {
     paddingVertical: 10,
     paddingHorizontal: 12,
-    backgroundColor: '#1E293B',
     borderRadius: 8,
     marginTop: 6,
-  },
-  subpageTitle: {
-    color: '#E2E8F0',
-    fontSize: 14,
-    fontWeight: '600',
   },
   chipsWrap: {
     flexDirection: 'row',
@@ -1653,32 +1844,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   searchInput: {
-    backgroundColor: '#111827',
     borderWidth: 1,
-    borderColor: '#1E293B',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: '#F8FAFC',
     fontSize: 15,
     marginBottom: 14,
   },
   searchResultCard: {
-    backgroundColor: '#111827',
     borderWidth: 1,
-    borderColor: '#1E293B',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
   },
   searchResultTitle: {
-    color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
   },
   searchResultSnippet: {
-    color: '#94A3B8',
     fontSize: 13,
     lineHeight: 18,
   },
@@ -1686,36 +1870,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.75)',
     justifyContent: 'center',
-    padding: 22,
+    padding: 20,
   },
   modalBox: {
-    backgroundColor: '#111827',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#334155',
     padding: 18,
   },
   modalTitle: {
-    color: '#F8FAFC',
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
   },
   modalInput: {
-    backgroundColor: '#0B0F17',
     borderWidth: 1,
-    borderColor: '#334155',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#F8FAFC',
     fontSize: 15,
     marginBottom: 12,
   },
   templateHeading: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#94A3B8',
     letterSpacing: 1,
     marginBottom: 8,
   },
@@ -1724,24 +1901,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   templateChip: {
-    backgroundColor: '#1E293B',
     borderWidth: 1,
-    borderColor: '#334155',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 10,
-  },
-  templateChipActive: {
-    backgroundColor: '#6366F1',
-    borderColor: '#818CF8',
-  },
-  templateChipText: {
-    color: '#CBD5E1',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  templateChipTextActive: {
-    color: '#FFFFFF',
   },
   modalActions: {
     flexDirection: 'row',
@@ -1752,12 +1915,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
-  modalCancelText: {
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
   modalConfirm: {
-    backgroundColor: '#6366F1',
     paddingVertical: 8,
     paddingHorizontal: 18,
     borderRadius: 8,
@@ -1767,14 +1925,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   menuItem: {
-    backgroundColor: '#1E293B',
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 10,
     marginBottom: 8,
   },
   menuItemText: {
-    color: '#E2E8F0',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1785,7 +1941,6 @@ const styles = StyleSheet.create({
   },
   menuHalfBtn: {
     flex: 1,
-    backgroundColor: '#1E293B',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
@@ -1805,17 +1960,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 4,
   },
-  snapPreview: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginTop: 3,
-  },
-  backupSubtitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-  },
   backupExportBtn: {
     backgroundColor: '#0C4A6E',
     borderWidth: 1,
@@ -1831,12 +1975,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   backupInput: {
-    backgroundColor: '#0B0F17',
     borderWidth: 1,
-    borderColor: '#334155',
     borderRadius: 10,
     padding: 10,
-    color: '#CBD5E1',
     fontSize: 12,
     height: 110,
     textAlignVertical: 'top',
