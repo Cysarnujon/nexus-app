@@ -3,6 +3,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,7 @@ import {
   stripInlineFormatting,
 } from '../editor/blocks';
 import AdvancedBlockView from './AdvancedBlocks';
+import MediaBlockView from './MediaBlocks';
 
 interface BlockEditorProps {
   noteId: string;
@@ -66,6 +68,14 @@ const ADVANCED_TYPES = new Set<BlockType>([
   'toc',
   'button',
   'bookmark',
+]);
+
+const MEDIA_TYPES = new Set<BlockType>([
+  'image',
+  'gallery',
+  'video',
+  'audio',
+  'file',
 ]);
 
 function renderFormattedInline(
@@ -383,6 +393,9 @@ export default function BlockEditor({
       tableData: activeBlock.tableData
         ? activeBlock.tableData.map((r) => [...r])
         : undefined,
+      galleryUris: activeBlock.galleryUris
+        ? [...activeBlock.galleryUris]
+        : undefined,
     };
     const next = [...blocks];
     next.splice(idx + 1, 0, clone);
@@ -404,7 +417,8 @@ export default function BlockEditor({
       !activeBlock ||
       activeBlock.type === 'divider' ||
       activeBlock.type === 'pagebreak' ||
-      ADVANCED_TYPES.has(activeBlock.type)
+      ADVANCED_TYPES.has(activeBlock.type) ||
+      MEDIA_TYPES.has(activeBlock.type)
     ) {
       return;
     }
@@ -646,7 +660,6 @@ export default function BlockEditor({
 
   return (
     <View style={styles.wrapper}>
-      {/* Barra Superior do Editor */}
       <View style={styles.editorTopBar}>
         <View
           style={[
@@ -720,7 +733,6 @@ export default function BlockEditor({
         </View>
       </View>
 
-      {/* Container dos Blocos */}
       <View
         style={[
           styles.blocksContainer,
@@ -751,6 +763,21 @@ export default function BlockEditor({
                     | 'center'
                     | 'right'),
           };
+
+          if (MEDIA_TYPES.has(block.type)) {
+            return (
+              <View key={block.id} style={{ paddingLeft: indentPad }}>
+                <MediaBlockView
+                  block={block}
+                  isPreviewMode={isPreviewMode}
+                  isFocused={isFocused}
+                  theme={theme}
+                  onFocus={() => setActiveBlockId(block.id)}
+                  onUpdateBlock={updateBlockPatch}
+                />
+              </View>
+            );
+          }
 
           if (ADVANCED_TYPES.has(block.type)) {
             return (
@@ -1085,7 +1112,6 @@ export default function BlockEditor({
             );
           }
 
-          // Estilos por tipo de bloco textual
           const textStyleByType = (() => {
             switch (block.type) {
               case 'h1':
@@ -1237,13 +1263,12 @@ export default function BlockEditor({
             }}
           >
             <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>
-              + Inserir bloco (34 tipos disponíveis)
+              + Inserir bloco (39 tipos disponíveis)
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Barra de Ferramentas Móvel Personalizável */}
       {!isPreviewMode && (
         <View
           style={[
@@ -1289,7 +1314,6 @@ export default function BlockEditor({
         </View>
       )}
 
-      {/* MODAL 1: Menu + Categorizado estilo Notion */}
       <Modal
         visible={insertModalVisible}
         transparent
@@ -1323,7 +1347,7 @@ export default function BlockEditor({
               ]}
               value={blockSearch}
               onChangeText={setBlockSearch}
-              placeholder="Buscar tipo de bloco (kanban, h4, equação...)..."
+              placeholder="Buscar (imagem, vídeo, áudio, pdf, kanban...)..."
               placeholderTextColor={theme.textDim}
             />
 
@@ -1382,7 +1406,6 @@ export default function BlockEditor({
         </View>
       </Modal>
 
-      {/* MODAL 2: Cor do Bloco */}
       <Modal
         visible={colorModalVisible}
         transparent
@@ -1437,7 +1460,6 @@ export default function BlockEditor({
         </View>
       </Modal>
 
-      {/* MODAL 3: Seletor de [[Link]] */}
       <Modal
         visible={linkPickerVisible}
         transparent
@@ -1523,7 +1545,6 @@ export default function BlockEditor({
         </View>
       </Modal>
 
-      {/* MODAL 4: Aparência Aa */}
       <Modal
         visible={appearanceVisible}
         transparent
@@ -1662,7 +1683,6 @@ export default function BlockEditor({
         </View>
       </Modal>
 
-      {/* MODAL 5: Configurar Barra de Ferramentas (estilo Obsidian!) */}
       <Modal
         visible={toolbarConfigVisible}
         transparent
@@ -1766,7 +1786,6 @@ export default function BlockEditor({
         </View>
       </Modal>
 
-      {/* MODAL 6: Localizar e Substituir */}
       <Modal
         visible={findModalVisible}
         transparent
