@@ -2,13 +2,31 @@
   "expo": {
     "name": "Nexus",
     "slug": "nexus",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "backgroundColor": "#0B0F17",
     "android": {
       "package": "com.nexus.secondbrain",
       "backgroundColor": "#0B0F17"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir acesso às fotos para anexar imagens e vídeos nas notas do Nexus.",
+          "cameraPermission": "Permitir acesso à câmera para capturar fotos e vídeos para suas notas."
+        }
+      ],
+      "expo-document-picker",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Permitir acesso ao microfone para gravar notas de voz no Nexus.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-video"
+    ]
   }
 }
