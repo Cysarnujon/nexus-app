@@ -51,6 +51,7 @@ import {
   parseContentToBlocks,
   serializeBlocks,
 } from './src/editor/blocks';
+import { exportNoteToPdf, printNote } from './src/utils/media';
 
 type MainTab = 'spaces' | 'graph' | 'tags' | 'tasks' | 'search';
 
@@ -431,6 +432,22 @@ export default function App() {
     }
   };
 
+  const handleExportPdf = async (node: NexusNode) => {
+    try {
+      await exportNoteToPdf(node.title, node.content);
+    } catch (error) {
+      Alert.alert('Erro ao gerar PDF', String(error));
+    }
+  };
+
+  const handlePrintNote = async (node: NexusNode) => {
+    try {
+      await printNote(node.title, node.content);
+    } catch (error) {
+      Alert.alert('Erro ao imprimir', String(error));
+    }
+  };
+
   const handleSaveSnapshot = (node: NexusNode) => {
     saveNodeSnapshot(node.id, node.title, node.content);
     Alert.alert(
@@ -748,7 +765,7 @@ export default function App() {
               style={[
                 styles.modalBox,
                 {
-                  maxHeight: '84%',
+                  maxHeight: '86%',
                   backgroundColor: theme.surface,
                   borderColor: theme.border,
                 },
@@ -872,6 +889,34 @@ export default function App() {
                 >
                   <Text style={[styles.menuItemText, { color: theme.text }]}>
                     🕒 Histórico de versões
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    const target = menuNode;
+                    setMenuNodeId(null);
+                    handleExportPdf(target);
+                  }}
+                >
+                  <Text style={[styles.menuItemText, { color: '#F43F5E' }]}>
+                    📕 Exportar PDF
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.menuItem, { backgroundColor: theme.surfaceAlt }]}
+                  onPress={() => {
+                    if (!menuNode) return;
+                    const target = menuNode;
+                    setMenuNodeId(null);
+                    handlePrintNote(target);
+                  }}
+                >
+                  <Text style={[styles.menuItemText, { color: theme.text }]}>
+                    🖨 Imprimir página
                   </Text>
                 </TouchableOpacity>
 
@@ -1366,7 +1411,7 @@ export default function App() {
         <View>
           <Text style={[styles.brand, { color: theme.text }]}>NEXUS</Text>
           <Text style={[styles.subtitle, { color: theme.textDim }]}>
-            v0.6 • Super Editor ({nodes.length} notas)
+            v0.7 • Segundo Cérebro ({nodes.length} notas)
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -1464,7 +1509,7 @@ export default function App() {
             </View>
           )}
           <Text style={[styles.tipText, { color: theme.textDim }]}>
-            Novidade v0.6: 34 tipos de blocos (+), barra configurável (🔧), Kanban, Gráficos, Abas, Modo Zen (🧘) e Tema Claro/Escuro!
+            Novidade v0.7: Anexe Fotos, Galeria, Vídeos, Áudios/Voz, PDFs e exporte qualquer nota em PDF real pelo menu ⋯!
           </Text>
         </ScrollView>
       )}
@@ -1498,7 +1543,7 @@ export default function App() {
             ]}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Buscar notas, #tags, tabelas, kanban..."
+            placeholder="Buscar notas, #tags, tabelas, anexos..."
             placeholderTextColor={theme.textDim}
             autoFocus
           />
