@@ -2,9 +2,9 @@
   "expo": {
     "name": "Nexus",
     "slug": "nexus",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#0B0F17",
     "android": {
       "package": "com.nexus.secondbrain",
