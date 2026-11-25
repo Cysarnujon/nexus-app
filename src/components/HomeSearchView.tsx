@@ -27,6 +27,7 @@ export interface SavedSearchItem {
   sourceName: string;
   sourceIcon: string;
   url: string;
+  tags?: string;
   createdAt: number;
 }
 
@@ -86,13 +87,20 @@ export function buildSourceSearchUrl(
 
 interface HomeSearchViewProps {
   nodes: NexusNode[];
+  coursesCount: number;
   theme: EditorTheme;
   customSources: SearchSource[];
   savedSearches: SavedSearchItem[];
   recentSearches: SavedSearchItem[];
+  onOpenCourses: () => void;
   onAddCustomSource: (source: SearchSource) => void;
   onDeleteCustomSource: (id: string) => void;
-  onOpenWebUrl: (url: string, title: string, source: SearchSource, query: string) => void;
+  onOpenWebUrl: (
+    url: string,
+    title: string,
+    source: SearchSource,
+    query: string
+  ) => void;
   onSaveSearch: (item: SavedSearchItem) => void;
   onDeleteSavedSearch: (id: string) => void;
   onClearRecentSearches: () => void;
@@ -101,10 +109,12 @@ interface HomeSearchViewProps {
 
 export default function HomeSearchView({
   nodes,
+  coursesCount,
   theme,
   customSources,
   savedSearches,
   recentSearches,
+  onOpenCourses,
   onAddCustomSource,
   onDeleteCustomSource,
   onOpenWebUrl,
@@ -121,10 +131,17 @@ export default function HomeSearchView({
   const [selectedSourceId, setSelectedSourceId] = useState<string>('google');
   const [query, setQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [selectedSavedTag, setSelectedSavedTag] = useState<string>('all');
 
   const [addSourceVisible, setAddSourceVisible] = useState(false);
   const [newSourceName, setNewSourceName] = useState('');
   const [newSourceUrl, setNewSourceUrl] = useState('');
+
+  // Modal + Novo Link rápido
+  const [newLinkModalVisible, setNewLinkModalVisible] = useState(false);
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualUrl, setManualUrl] = useState('');
+  const [manualTags, setManualTags] = useState('');
 
   const selectedSource = useMemo(
     () => allSources.find((s) => s.id === selectedSourceId) ?? DEFAULT_SOURCES[2],
@@ -145,11 +162,31 @@ export default function HomeSearchView({
     [nodes]
   );
 
+  const savedTagsList = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of savedSearches) {
+      const matches = (s.tags ?? '').match(/#[a-zA-Z0-9_À-ÿ]+/g) || [];
+      for (const m of matches) set.add(m);
+    }
+    return Array.from(set);
+  }, [savedSearches]);
+
+  const filteredSavedSearches = useMemo(() => {
+    if (selectedSavedTag === 'all') return savedSearches;
+    const lower = selectedSavedTag.toLowerCase();
+    return savedSearches.filter((s) =>
+      (s.tags ?? '').toLowerCase().includes(lower)
+    );
+  }, [savedSearches, selectedSavedTag]);
+
   const executeSearch = () => {
     setDropdownOpen(false);
     if (selectedSource.id === 'nexus') {
       if (!query.trim()) {
-        Alert.alert('Busca no Nexus', 'Digite uma palavra para buscar em suas notas.');
+        Alert.alert(
+          'Busca no Nexus',
+          'Digite uma palavra para buscar em suas notas.'
+        );
       }
       return;
     }
@@ -163,7 +200,10 @@ export default function HomeSearchView({
   const handleSaveCurrentSearch = () => {
     const trimmed = query.trim();
     if (!trimmed) {
-      Alert.alert('Digite uma pesquisa', 'Escreva algo na barra antes de salvar.');
+      Alert.alert(
+        'Digite uma pesquisa',
+        'Escreva algo na barra antes de salvar.'
+      );
       return;
     }
     const url =
@@ -178,16 +218,53 @@ export default function HomeSearchView({
       sourceName: selectedSource.name,
       sourceIcon: selectedSource.icon,
       url,
+      tags: `#${selectedSource.name.split(' ')[0]}`,
       createdAt: Date.now(),
     });
     Alert.alert('Pesquisa salva!', `"${trimmed}" foi salva nos seus atalhos.`);
+  };
+
+  const handleSaveManualLink = () => {
+    const title = manualTitle.trim();
+    let url = manualUrl.trim();
+    if (!title || !url) {
+      Alert.alert('Campos obrigatórios', 'Preencha o título e o link.');
+      return;
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      url = `https://${url}`;
+    }
+    const cleanTags = manualTags
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => (t.startsWith('#') ? t : `#${t}`))
+      .join(' ');
+
+    onSaveSearch({
+      id: `sv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      query: title,
+      sourceId: 'custom_link',
+      sourceName: 'Link Salvo',
+      sourceIcon: '🔗',
+      url,
+      tags: cleanTags || undefined,
+      createdAt: Date.now(),
+    });
+    setManualTitle('');
+    setManualUrl('');
+    setManualTags('');
+    setNewLinkModalVisible(false);
   };
 
   const handleCreateCustomSource = () => {
     const name = newSourceName.trim();
     let url = newSourceUrl.trim();
     if (!name || !url) {
-      Alert.alert('Campos obrigatórios', 'Preencha o nome e o endereço do site.');
+      Alert.alert(
+        'Campos obrigatórios',
+        'Preencha o nome e o endereço do site.'
+      );
       return;
     }
     if (!/^https?:\/\//i.test(url)) {
@@ -220,7 +297,12 @@ export default function HomeSearchView({
         icon: item.sourceIcon,
         urlTemplate: item.url,
       };
-    onOpenWebUrl(item.url, `${item.sourceName}: ${item.query}`, src, item.query);
+    onOpenWebUrl(
+      item.url,
+      `${item.sourceName}: ${item.query}`,
+      src,
+      item.query
+    );
   };
 
   return (
@@ -228,7 +310,7 @@ export default function HomeSearchView({
       style={styles.scrollArea}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Barra de Pesquisa Principal (estilo do print) */}
+      {/* Barra de Pesquisa Principal */}
       <View
         style={[
           styles.searchPill,
@@ -277,7 +359,7 @@ export default function HomeSearchView({
         </TouchableOpacity>
       </View>
 
-      {/* Dropdown Flutuante de Fontes (estilo do print, sem Spotify!) */}
+      {/* Dropdown Flutuante de Fontes (sem Spotify!) */}
       {dropdownOpen && (
         <View
           style={[
@@ -361,6 +443,40 @@ export default function HomeSearchView({
         </View>
       )}
 
+      {/* Banner Meus Cursos (igual ao print!) */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onOpenCourses}
+        style={[
+          styles.coursesBanner,
+          {
+            backgroundColor: theme.isDark ? '#172554' : '#E2E8F0',
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <Text style={{ fontSize: 18 }}>🎓</Text>
+        <Text
+          style={{
+            flex: 1,
+            color: theme.isDark ? '#93C5FD' : '#1E3A8A',
+            fontSize: 15,
+            fontWeight: '800',
+          }}
+        >
+          Meus Cursos ({coursesCount})
+        </Text>
+        <Text
+          style={{
+            color: theme.isDark ? '#93C5FD' : '#1E3A8A',
+            fontSize: 16,
+            fontWeight: '800',
+          }}
+        >
+          ›
+        </Text>
+      </TouchableOpacity>
+
       {/* Botões rápidos abaixo da barra */}
       <View style={styles.quickActionRow}>
         {selectedSource.id !== 'nexus' && (
@@ -435,12 +551,86 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Pesquisas Salvas */}
+      {/* Pesquisas Salvas + Filtro por Tags + Novo Link */}
       <View style={{ marginBottom: 18 }}>
-        <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
-          ⭐ PESQUISAS SALVAS ({savedSearches.length})
-        </Text>
-        {savedSearches.length === 0 ? (
+        <View style={styles.rowBetween}>
+          <Text style={[styles.sectionHeading, { color: theme.textDim }]}>
+            PESQUISAS SALVAS ({savedSearches.length})
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setManualTitle('');
+              setManualUrl('');
+              setManualTags('');
+              setNewLinkModalVisible(true);
+            }}
+          >
+            <Text style={{ color: '#2563EB', fontSize: 13, fontWeight: '700', marginBottom: 8 }}>
+              + Novo Link
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {savedTagsList.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6, marginBottom: 10 }}
+          >
+            <TouchableOpacity
+              onPress={() => setSelectedSavedTag('all')}
+              style={[
+                styles.tagFilterPill,
+                {
+                  backgroundColor:
+                    selectedSavedTag === 'all' ? '#EDE9FE' : theme.surface,
+                  borderColor:
+                    selectedSavedTag === 'all' ? '#C4B5FD' : theme.border,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color:
+                    selectedSavedTag === 'all' ? '#31105E' : theme.textMuted,
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
+                Todas
+              </Text>
+            </TouchableOpacity>
+
+            {savedTagsList.map((tg) => {
+              const active = selectedSavedTag === tg;
+              return (
+                <TouchableOpacity
+                  key={tg}
+                  onPress={() => setSelectedSavedTag(tg)}
+                  style={[
+                    styles.tagFilterPill,
+                    {
+                      backgroundColor: active ? '#EDE9FE' : theme.surface,
+                      borderColor: active ? '#C4B5FD' : theme.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      color: active ? '#31105E' : theme.textMuted,
+                      fontSize: 12,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {tg}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {filteredSavedSearches.length === 0 ? (
           <View
             style={[
               styles.emptyCard,
@@ -448,11 +638,11 @@ export default function HomeSearchView({
             ]}
           >
             <Text style={{ color: theme.textDim, fontSize: 12, lineHeight: 18 }}>
-              Pesquise algo e toque em "💾 Salvar pesquisa" para fixar seus temas de estudo aqui.
+              Pesquise algo e toque em "💾 Salvar pesquisa" ou adicione com "+ Novo Link".
             </Text>
           </View>
         ) : (
-          savedSearches.map((item) => (
+          filteredSavedSearches.map((item) => (
             <View
               key={item.id}
               style={[
@@ -464,19 +654,37 @@ export default function HomeSearchView({
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}
                 onPress={() => handleOpenSavedOrRecent(item)}
               >
-                <Text style={{ fontSize: 15, color: theme.accent, fontWeight: '800', width: 22, textAlign: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: '#1E40AF',
+                    fontWeight: '800',
+                    width: 24,
+                    textAlign: 'center',
+                  }}
+                >
                   {item.sourceIcon}
                 </Text>
                 <View style={{ flex: 1 }}>
                   <Text
-                    style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}
+                    style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}
                     numberOfLines={1}
                   >
                     {item.query}
                   </Text>
-                  <Text style={{ color: theme.textDim, fontSize: 11 }}>
-                    {item.sourceName}
+                  <Text
+                    style={{ color: '#2563EB', fontSize: 11, marginTop: 1 }}
+                    numberOfLines={1}
+                  >
+                    {item.url}
                   </Text>
+                  {item.tags ? (
+                    <View style={styles.savedTagBadge}>
+                      <Text style={{ color: '#334155', fontSize: 10, fontWeight: '700' }}>
+                        {item.tags}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </TouchableOpacity>
 
@@ -484,7 +692,7 @@ export default function HomeSearchView({
                 onPress={() => onDeleteSavedSearch(item.id)}
                 style={{ paddingHorizontal: 8, paddingVertical: 4 }}
               >
-                <Text style={{ color: '#F87171', fontSize: 13 }}>🗑</Text>
+                <Text style={{ color: '#F87171', fontSize: 14 }}>🗑</Text>
               </TouchableOpacity>
             </View>
           ))
@@ -628,6 +836,90 @@ export default function HomeSearchView({
           </View>
         </View>
       </Modal>
+
+      {/* Modal + Novo Link */}
+      <Modal
+        visible={newLinkModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNewLinkModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalBox,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              🔗 Salvar Novo Link
+            </Text>
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.bg,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+              ]}
+              value={manualTitle}
+              onChangeText={setManualTitle}
+              placeholder="Título (ex: Aula Beatmaker)"
+              placeholderTextColor={theme.textDim}
+              autoFocus
+            />
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.bg,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+              ]}
+              value={manualUrl}
+              onChangeText={setManualUrl}
+              placeholder="https://..."
+              placeholderTextColor={theme.textDim}
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={[
+                styles.modalInput,
+                {
+                  backgroundColor: theme.bg,
+                  borderColor: theme.border,
+                  color: '#A855F7',
+                  fontWeight: '700',
+                },
+              ]}
+              value={manualTags}
+              onChangeText={setManualTags}
+              placeholder="Tags (ex: #YouTube #Estudos)"
+              placeholderTextColor={theme.textDim}
+              autoCapitalize="none"
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => setNewLinkModalVisible(false)}
+                style={{ padding: 8 }}
+              >
+                <Text style={{ color: theme.textDim, fontWeight: '600' }}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveManualLink}
+                style={[styles.modalConfirm, { backgroundColor: theme.accent }]}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '700' }}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -636,7 +928,7 @@ const styles = StyleSheet.create({
   scrollArea: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 18,
+    paddingTop: 14,
   },
   searchPill: {
     flexDirection: 'row',
@@ -719,12 +1011,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 12,
   },
+  coursesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 12,
+    gap: 10,
+  },
   quickActionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginTop: 12,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   primaryActionBtn: {
     flex: 1,
@@ -747,14 +1049,20 @@ const styles = StyleSheet.create({
   },
   sectionHeading: {
     fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.1,
+    fontWeight: '800',
+    letterSpacing: 1,
     marginBottom: 8,
   },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  tagFilterPill: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   emptyCard: {
     borderWidth: 1,
@@ -771,10 +1079,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     marginBottom: 8,
+  },
+  savedTagBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginTop: 6,
   },
   chipsWrap: {
     flexDirection: 'row',
