@@ -24,6 +24,7 @@ import {
 interface BlockEditorProps {
   noteId: string;
   rawContent: string;
+  availableNoteTitles?: string[];
   onChangeSerialized: (serialized: string) => void;
   onPressInternalLink: (title: string) => void;
 }
@@ -141,14 +142,13 @@ function renderFormattedInline(
     parts.push(<Text key={`end-${keyIdx++}`}>{text.slice(lastIndex)}</Text>);
   }
 
-  return (
-    <Text style={[{ color: baseColor }, extraStyle]}>{parts}</Text>
-  );
+  return <Text style={[{ color: baseColor }, extraStyle]}>{parts}</Text>;
 }
 
 export default function BlockEditor({
   noteId,
   rawContent,
+  availableNoteTitles = [],
   onChangeSerialized,
   onPressInternalLink,
 }: BlockEditorProps) {
@@ -162,6 +162,8 @@ export default function BlockEditor({
   const [insertModalVisible, setInsertModalVisible] = useState(false);
   const [insertMode, setInsertMode] = useState<'add' | 'convert'>('add');
   const [colorModalVisible, setColorModalVisible] = useState(false);
+  const [linkPickerVisible, setLinkPickerVisible] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
 
   useEffect(() => {
     const parsed = parseContentToBlocks(rawContent);
@@ -206,7 +208,9 @@ export default function BlockEditor({
           text: shortcut.cleanText,
           checked: shortcut.type === 'todo' ? false : b.checked,
           calloutVariant:
-            shortcut.type === 'callout' ? ('info' as CalloutVariant) : b.calloutVariant,
+            shortcut.type === 'callout'
+              ? ('info' as CalloutVariant)
+              : b.calloutVariant,
           isOpen: shortcut.type === 'toggle' ? true : b.isOpen,
         };
       }
@@ -345,6 +349,12 @@ export default function BlockEditor({
     commitBlocks(updated);
   };
 
+  const filteredNoteTitles = useMemo(() => {
+    const q = linkSearch.trim().toLowerCase();
+    if (!q) return availableNoteTitles;
+    return availableNoteTitles.filter((t) => t.toLowerCase().includes(q));
+  }, [availableNoteTitles, linkSearch]);
+
   const stats = useMemo(() => {
     const fullText = blocks
       .map((b) => (b.toggleBody ? `${b.text} ${b.toggleBody}` : b.text))
@@ -362,10 +372,7 @@ export default function BlockEditor({
       <View style={styles.editorTopBar}>
         <View style={styles.topLeftGroup}>
           <TouchableOpacity
-            style={[
-              styles.modePill,
-              !isPreviewMode && styles.modePillActive,
-            ]}
+            style={[styles.modePill, !isPreviewMode && styles.modePillActive]}
             onPress={() => setIsPreviewMode(false)}
           >
             <Text
@@ -378,10 +385,7 @@ export default function BlockEditor({
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.modePill,
-              isPreviewMode && styles.modePillActive,
-            ]}
+            style={[styles.modePill, isPreviewMode && styles.modePillActive]}
             onPress={() => setIsPreviewMode(true)}
           >
             <Text
@@ -472,7 +476,10 @@ export default function BlockEditor({
                     )
                   ) : (
                     <TextInput
-                      style={[styles.paragraphInput, { color: colorInfo.textHex }]}
+                      style={[
+                        styles.paragraphInput,
+                        { color: colorInfo.textHex },
+                      ]}
                       value={block.text}
                       onFocus={() => setActiveBlockId(block.id)}
                       onChangeText={(t) => handleTextChange(block.id, t)}
@@ -492,7 +499,12 @@ export default function BlockEditor({
                 key={block.id}
                 style={[
                   styles.toggleBox,
-                  { backgroundColor: colorInfo.bgHex !== 'transparent' ? colorInfo.bgHex : '#111827' },
+                  {
+                    backgroundColor:
+                      colorInfo.bgHex !== 'transparent'
+                        ? colorInfo.bgHex
+                        : '#111827',
+                  },
                   isFocused && styles.blockFocusedBorder,
                 ]}
               >
@@ -515,7 +527,10 @@ export default function BlockEditor({
                       )
                     ) : (
                       <TextInput
-                        style={[styles.toggleTitleInput, { color: colorInfo.textHex }]}
+                        style={[
+                          styles.toggleTitleInput,
+                          { color: colorInfo.textHex },
+                        ]}
                         value={block.text}
                         onFocus={() => setActiveBlockId(block.id)}
                         onChangeText={(t) => handleTextChange(block.id, t)}
@@ -540,7 +555,9 @@ export default function BlockEditor({
                         style={styles.toggleBodyInput}
                         value={block.toggleBody ?? ''}
                         onFocus={() => setActiveBlockId(block.id)}
-                        onChangeText={(t) => handleToggleBodyChange(block.id, t)}
+                        onChangeText={(t) =>
+                          handleToggleBodyChange(block.id, t)
+                        }
                         multiline
                         placeholder="Conteúdo interno recolhível..."
                         placeholderTextColor="#64748B"
@@ -726,6 +743,27 @@ export default function BlockEditor({
 
             <TouchableOpacity
               style={styles.toolBtn}
+              onPress={() => {
+                setLinkSearch('');
+                setLinkPickerVisible(true);
+              }}
+            >
+              <Text style={[styles.toolBtnText, { color: '#7DD3FC' }]}>
+                [[Link]]
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.toolBtn}
+              onPress={() => appendSnippetToActive('#tag')}
+            >
+              <Text style={[styles.toolBtnText, { color: '#D8B4FE' }]}>
+                #tag
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.toolBtn}
               onPress={() => appendSnippetToActive('**negrito**')}
             >
               <Text style={[styles.toolBtnText, { fontWeight: '800' }]}>B</Text>
@@ -735,7 +773,9 @@ export default function BlockEditor({
               style={styles.toolBtn}
               onPress={() => appendSnippetToActive('*itálico*')}
             >
-              <Text style={[styles.toolBtnText, { fontStyle: 'italic' }]}>I</Text>
+              <Text style={[styles.toolBtnText, { fontStyle: 'italic' }]}>
+                I
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -757,24 +797,6 @@ export default function BlockEditor({
               onPress={() => appendSnippetToActive('`código`')}
             >
               <Text style={styles.toolBtnText}>{'` `'}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.toolBtn}
-              onPress={() => appendSnippetToActive('[[Nota]]')}
-            >
-              <Text style={[styles.toolBtnText, { color: '#7DD3FC' }]}>
-                [[Link]]
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.toolBtn}
-              onPress={() => appendSnippetToActive('#tag')}
-            >
-              <Text style={[styles.toolBtnText, { color: '#D8B4FE' }]}>
-                #tag
-              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -884,6 +906,69 @@ export default function BlockEditor({
             <TouchableOpacity
               style={styles.modalCloseBtn}
               onPress={() => setColorModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={linkPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLinkPickerVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalBox, { maxHeight: '75%' }]}>
+            <Text style={styles.modalTitle}>Conectar Nota [[...]]</Text>
+            <TextInput
+              style={styles.linkSearchInput}
+              value={linkSearch}
+              onChangeText={setLinkSearch}
+              placeholder="Buscar ou criar nome de nota..."
+              placeholderTextColor="#64748B"
+              autoFocus
+            />
+
+            <ScrollView>
+              {linkSearch.trim().length > 0 &&
+                !availableNoteTitles.some(
+                  (t) => t.toLowerCase() === linkSearch.trim().toLowerCase()
+                ) && (
+                  <TouchableOpacity
+                    style={[
+                      styles.linkPickerItem,
+                      { backgroundColor: '#0C4A6E' },
+                    ]}
+                    onPress={() => {
+                      appendSnippetToActive(`[[${linkSearch.trim()}]]`);
+                      setLinkPickerVisible(false);
+                    }}
+                  >
+                    <Text style={styles.linkPickerNewText}>
+                      ➕ Criar link [[{linkSearch.trim()}]]
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+              {filteredNoteTitles.map((title) => (
+                <TouchableOpacity
+                  key={title}
+                  style={styles.linkPickerItem}
+                  onPress={() => {
+                    appendSnippetToActive(`[[${title}]]`);
+                    setLinkPickerVisible(false);
+                  }}
+                >
+                  <Text style={styles.linkPickerText}>🔗 {title}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setLinkPickerVisible(false)}
             >
               <Text style={styles.modalCloseText}>Cancelar</Text>
             </TouchableOpacity>
@@ -1281,6 +1366,34 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   colorLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  linkSearchInput: {
+    backgroundColor: '#0B0F17',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: '#F8FAFC',
+    fontSize: 14,
+    marginBottom: 10,
+  },
+  linkPickerItem: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    marginBottom: 7,
+  },
+  linkPickerText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  linkPickerNewText: {
+    color: '#7DD3FC',
     fontSize: 14,
     fontWeight: '700',
   },
