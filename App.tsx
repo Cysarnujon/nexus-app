@@ -91,6 +91,8 @@ interface BrowserSession {
   query: string;
 }
 
+const ANDROID_BOTTOM_SAFE = Platform.OS === 'android' ? 48 : 0;
+
 function extractTags(rawContent: string): string[] {
   const plain = extractPlainTextFromContent(rawContent);
   const matches = plain.match(/#[a-zA-Z0-9_À-ÿ]+/g) || [];
@@ -1080,7 +1082,11 @@ export default function App() {
           <View
             style={[
               styles.drawerPanel,
-              { backgroundColor: theme.surface, borderRightColor: theme.border },
+              {
+                backgroundColor: theme.surface,
+                borderRightColor: theme.border,
+                paddingBottom: ANDROID_BOTTOM_SAFE,
+              },
             ]}
           >
             <View style={styles.drawerHeader}>
@@ -1757,7 +1763,13 @@ export default function App() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.bg,
+        paddingBottom: ANDROID_BOTTOM_SAFE,
+      }}
+    >
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
       {showProductivityHub ? (
@@ -2282,7 +2294,17 @@ export default function App() {
       )}
 
       {browserSession && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 50 }]}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: ANDROID_BOTTOM_SAFE,
+            zIndex: 50,
+            backgroundColor: theme.bg,
+          }}
+        >
           <InAppBrowser
             initialUrl={browserSession.url}
             initialTitle={browserSession.title}
@@ -2319,7 +2341,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 28) : 0,
-    paddingBottom: 12,
   },
   header: {
     flexDirection: 'row',
