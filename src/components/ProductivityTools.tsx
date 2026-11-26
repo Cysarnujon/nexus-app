@@ -25,6 +25,7 @@ import {
 } from '../editor/blocks';
 import { ProductivityToolDef } from '../data/productivityCatalog';
 import MilanoteBoardView from './MilanoteBoardView';
+import MindMapView from './MindMapView';
 
 interface ToolRunnerProps {
   tool: ProductivityToolDef;
@@ -1159,6 +1160,16 @@ export default function ProductivityToolRunner({
   if (tool.kind === 'milanote') {
     return (
       <MilanoteBoardView
+        theme={theme}
+        onOpenInBrowser={onOpenInBrowser}
+        onExportToSpaces={onExportToSpaces}
+      />
+    );
+  }
+
+  if (tool.kind === 'mindmap') {
+    return (
+      <MindMapView
         theme={theme}
         onOpenInBrowser={onOpenInBrowser}
         onExportToSpaces={onExportToSpaces}
