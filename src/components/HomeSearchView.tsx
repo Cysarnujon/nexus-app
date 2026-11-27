@@ -88,12 +88,15 @@ export function buildSourceSearchUrl(
 interface HomeSearchViewProps {
   nodes: NexusNode[];
   coursesCount: number;
+  hasApiKey: boolean;
   theme: EditorTheme;
   customSources: SearchSource[];
   savedSearches: SavedSearchItem[];
   recentSearches: SavedSearchItem[];
   onOpenCourses: () => void;
   onOpenProductivityHub: () => void;
+  onOpenDailySummary: () => void;
+  onOpenApiKeyModal: () => void;
   onAddCustomSource: (source: SearchSource) => void;
   onDeleteCustomSource: (id: string) => void;
   onOpenWebUrl: (
@@ -111,12 +114,15 @@ interface HomeSearchViewProps {
 export default function HomeSearchView({
   nodes,
   coursesCount,
+  hasApiKey,
   theme,
   customSources,
   savedSearches,
   recentSearches,
   onOpenCourses,
   onOpenProductivityHub,
+  onOpenDailySummary,
+  onOpenApiKeyModal,
   onAddCustomSource,
   onDeleteCustomSource,
   onOpenWebUrl,
@@ -442,6 +448,35 @@ export default function HomeSearchView({
         </View>
       )}
 
+      {/* Botões Resumo do Dia e Chave API (igual ao print!) */}
+      <View style={styles.aiSummaryRow}>
+        <TouchableOpacity
+          onPress={onOpenDailySummary}
+          style={[
+            styles.summaryBtn,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Text style={{ color: theme.accent, fontSize: 15 }}>✦</Text>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+            Resumo do Dia
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onOpenApiKeyModal}
+          style={[
+            styles.apiKeyBtn,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <Text style={{ fontSize: 14 }}>🔑</Text>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+            {hasApiKey ? 'API ✓' : 'Chave API'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Banners Meus Cursos & Ferramentas de Produtividade */}
       <TouchableOpacity
         activeOpacity={0.85}
@@ -497,7 +532,7 @@ export default function HomeSearchView({
             fontWeight: '800',
           }}
         >
-          Ferramentas Flow (Pomodoro, SWOT, Roda da Vida...)
+          Ferramentas Flow (Milanote, Mapa Mental, SWOT...)
         </Text>
         <Text
           style={{
@@ -1038,6 +1073,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 12,
   },
+  aiSummaryRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  summaryBtn: {
+    flex: 1.3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  apiKeyBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
   coursesBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1045,7 +1105,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginTop: 12,
+    marginTop: 10,
     gap: 10,
   },
   quickActionRow: {
