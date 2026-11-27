@@ -20,6 +20,7 @@ export type DrawerDestination =
   | { kind: 'routine' }
   | { kind: 'courses'; courseId?: string }
   | { kind: 'productivity' }
+  | { kind: 'memento' }
   | { kind: 'spaces' }
   | { kind: 'bookmarks' }
   | { kind: 'tracker'; tab: TrackerTab };
@@ -49,6 +50,7 @@ const CATEGORIES_BY_ID: Record<string, DrawerCategory> = {
     title: 'Organização Pessoal',
     items: [
       { icon: '✅', label: 'Minha Rotina', dest: { kind: 'routine' } },
+      { icon: '🗄', label: 'Memento Database', dest: { kind: 'memento' } },
       { icon: '🎓', label: 'Meus Cursos', dest: { kind: 'courses' } },
       { icon: '🧰', label: 'Ferramentas Flow', dest: { kind: 'productivity' } },
       { icon: '🧠', label: 'Espaços (Notas)', dest: { kind: 'spaces' } },
