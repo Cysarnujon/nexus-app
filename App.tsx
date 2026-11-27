@@ -68,6 +68,7 @@ import InfoHubView, { InfoSubTab } from './src/components/InfoHubView';
 import RoutineView from './src/components/RoutineView';
 import MediaTrackerView, { TrackerTab } from './src/components/MediaTrackerView';
 import BookmarksView from './src/components/BookmarksView';
+import MementoDbView from './src/components/MementoDbView';
 import AppDrawer, { DrawerDestination } from './src/components/AppDrawer';
 import {
   DARK_THEME,
@@ -92,6 +93,7 @@ type OverlayScreen =
   | null
   | { kind: 'courses'; courseId?: string | null }
   | { kind: 'productivity' }
+  | { kind: 'memento' }
   | { kind: 'info'; tab: InfoSubTab }
   | { kind: 'routine' }
   | { kind: 'bookmarks' }
@@ -357,6 +359,8 @@ export default function App() {
       setOverlayScreen({ kind: 'courses', courseId: dest.courseId ?? null });
     } else if (dest.kind === 'productivity') {
       setOverlayScreen({ kind: 'productivity' });
+    } else if (dest.kind === 'memento') {
+      setOverlayScreen({ kind: 'memento' });
     } else if (dest.kind === 'info') {
       setOverlayScreen({ kind: 'info', tab: dest.tab });
     } else if (dest.kind === 'routine') {
@@ -1098,7 +1102,7 @@ export default function App() {
                 🔑 Chave API do Gemini
               </Text>
               <Text style={{ color: theme.textDim, fontSize: 12, marginBottom: 10 }}>
-                Opcional: cole sua chave gratuita do Google AI Studio para o "Resumo do Dia" gerar respostas com inteligência artificial.
+                Opcional: cole sua chave gratuita do Google AI Studio para o "Resumo do Dia", "Memento IA" e "Programação Vibe".
               </Text>
               <TextInput
                 style={[styles.modalInput, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
@@ -1537,6 +1541,17 @@ export default function App() {
             setActiveTab('home');
           }}
         />
+      ) : overlayScreen?.kind === 'memento' ? (
+        <MementoDbView
+          theme={theme}
+          geminiApiKey={geminiApiKey}
+          onOpenDrawer={() => setDrawerVisible(true)}
+          onBackHome={() => {
+            setOverlayScreen(null);
+            setActiveTab('home');
+          }}
+          onExportToSpaces={handleExportProductivityToSpaces}
+        />
       ) : overlayScreen?.kind === 'bookmarks' ? (
         <BookmarksView
           theme={theme}
@@ -1852,7 +1867,7 @@ export default function App() {
                 {renderTree(null, 0)}
               </View>
               <Text style={[styles.tipText, { color: theme.textDim }]}>
-                Abra o menu ☰ no topo para acessar Marcadores, Tempo, Horóscopo, Cotações, Feeds, Rotina, Cursos e Ferramentas Flow!
+                Abra o menu ☰ no topo para acessar Memento Database, Marcadores, Tempo, Horóscopo, Cotações, Feeds, Rotina, Cursos e Ferramentas Flow!
               </Text>
             </ScrollView>
           )}
