@@ -87,14 +87,11 @@ export function buildSourceSearchUrl(
 
 interface HomeSearchViewProps {
   nodes: NexusNode[];
-  coursesCount: number;
   hasApiKey: boolean;
   theme: EditorTheme;
   customSources: SearchSource[];
   savedSearches: SavedSearchItem[];
   recentSearches: SavedSearchItem[];
-  onOpenCourses: () => void;
-  onOpenProductivityHub: () => void;
   onOpenDailySummary: () => void;
   onOpenApiKeyModal: () => void;
   onAddCustomSource: (source: SearchSource) => void;
@@ -113,14 +110,11 @@ interface HomeSearchViewProps {
 
 export default function HomeSearchView({
   nodes,
-  coursesCount,
   hasApiKey,
   theme,
   customSources,
   savedSearches,
   recentSearches,
-  onOpenCourses,
-  onOpenProductivityHub,
   onOpenDailySummary,
   onOpenApiKeyModal,
   onAddCustomSource,
@@ -448,7 +442,7 @@ export default function HomeSearchView({
         </View>
       )}
 
-      {/* Botões Resumo do Dia e Chave API (igual ao print!) */}
+      {/* Botões Resumo do Dia e Chave API */}
       <View style={styles.aiSummaryRow}>
         <TouchableOpacity
           onPress={onOpenDailySummary}
@@ -476,74 +470,6 @@ export default function HomeSearchView({
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Banners Meus Cursos & Ferramentas de Produtividade */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onOpenCourses}
-        style={[
-          styles.coursesBanner,
-          {
-            backgroundColor: theme.isDark ? '#172554' : '#E2E8F0',
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <Text style={{ fontSize: 18 }}>🎓</Text>
-        <Text
-          style={{
-            flex: 1,
-            color: theme.isDark ? '#93C5FD' : '#1E3A8A',
-            fontSize: 15,
-            fontWeight: '800',
-          }}
-        >
-          Meus Cursos ({coursesCount})
-        </Text>
-        <Text
-          style={{
-            color: theme.isDark ? '#93C5FD' : '#1E3A8A',
-            fontSize: 16,
-            fontWeight: '800',
-          }}
-        >
-          ›
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={onOpenProductivityHub}
-        style={[
-          styles.coursesBanner,
-          {
-            marginTop: 8,
-            backgroundColor: theme.isDark ? '#2E1065' : '#EDE9FE',
-            borderColor: theme.border,
-          },
-        ]}
-      >
-        <Text style={{ fontSize: 18 }}>🧰</Text>
-        <Text
-          style={{
-            flex: 1,
-            color: theme.isDark ? '#D8B4FE' : '#4C1D95',
-            fontSize: 15,
-            fontWeight: '800',
-          }}
-        >
-          Ferramentas Flow (Milanote, Mapa Mental, SWOT...)
-        </Text>
-        <Text
-          style={{
-            color: theme.isDark ? '#D8B4FE' : '#4C1D95',
-            fontSize: 16,
-            fontWeight: '800',
-          }}
-        >
-          ›
-        </Text>
-      </TouchableOpacity>
 
       {/* Botões rápidos abaixo da barra */}
       <View style={styles.quickActionRow}>
@@ -1097,16 +1023,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 10,
     gap: 6,
-  },
-  coursesBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 10,
-    gap: 10,
   },
   quickActionRow: {
     flexDirection: 'row',
