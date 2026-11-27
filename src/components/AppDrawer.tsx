@@ -21,6 +21,7 @@ export type DrawerDestination =
   | { kind: 'courses'; courseId?: string }
   | { kind: 'productivity' }
   | { kind: 'spaces' }
+  | { kind: 'bookmarks' }
   | { kind: 'tracker'; tab: TrackerTab };
 
 interface DrawerCategory {
@@ -58,6 +59,7 @@ const CATEGORIES_BY_ID: Record<string, DrawerCategory> = {
     icon: '📖',
     title: 'Gerenciamento',
     items: [
+      { icon: '🔖', label: 'Marcadores (Bookmarks)', dest: { kind: 'bookmarks' } },
       { icon: '📺', label: 'Assistindo', dest: { kind: 'tracker', tab: 'watching' } },
       { icon: '📚', label: 'Lendo', dest: { kind: 'tracker', tab: 'reading' } },
     ],
@@ -97,7 +99,7 @@ export default function AppDrawer({
   const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({
     info: true,
     personal: true,
-    management: false,
+    management: true,
   });
 
   const [menuCatId, setMenuCatId] = useState<string | null>(null);
@@ -137,7 +139,6 @@ export default function AppDrawer({
             },
           ]}
         >
-          {/* Banner Superior Roxo (igual ao print!) */}
           <View style={styles.heroCard}>
             <Text style={{ fontSize: 24, color: '#FFF' }}>⚡</Text>
             <View style={{ flex: 1 }}>
@@ -156,7 +157,6 @@ export default function AppDrawer({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Card Início */}
             <TouchableOpacity
               onPress={() => go({ kind: 'home' })}
               style={[
@@ -178,7 +178,6 @@ export default function AppDrawer({
               </View>
             </TouchableOpacity>
 
-            {/* 3 Categorias Expansíveis e Reordenáveis */}
             {catOrder.map((catId, catIdx) => {
               const cat = CATEGORIES_BY_ID[catId];
               if (!cat) return null;
