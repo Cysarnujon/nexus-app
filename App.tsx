@@ -67,6 +67,7 @@ import ProductivityHubView from './src/components/ProductivityHubView';
 import InfoHubView, { InfoSubTab } from './src/components/InfoHubView';
 import RoutineView from './src/components/RoutineView';
 import MediaTrackerView, { TrackerTab } from './src/components/MediaTrackerView';
+import BookmarksView from './src/components/BookmarksView';
 import AppDrawer, { DrawerDestination } from './src/components/AppDrawer';
 import {
   DARK_THEME,
@@ -93,6 +94,7 @@ type OverlayScreen =
   | { kind: 'productivity' }
   | { kind: 'info'; tab: InfoSubTab }
   | { kind: 'routine' }
+  | { kind: 'bookmarks' }
   | { kind: 'tracker'; tab: TrackerTab };
 
 interface BrowserSession {
@@ -182,7 +184,6 @@ export default function App() {
     null
   );
 
-  // Chave API & Resumo do Dia
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [apiKeyModalVisible, setApiKeyModalVisible] = useState(false);
   const [apiKeyDraft, setApiKeyDraft] = useState('');
@@ -360,6 +361,8 @@ export default function App() {
       setOverlayScreen({ kind: 'info', tab: dest.tab });
     } else if (dest.kind === 'routine') {
       setOverlayScreen({ kind: 'routine' });
+    } else if (dest.kind === 'bookmarks') {
+      setOverlayScreen({ kind: 'bookmarks' });
     } else if (dest.kind === 'tracker') {
       setOverlayScreen({ kind: 'tracker', tab: dest.tab });
     }
@@ -597,9 +600,7 @@ export default function App() {
       isFavorite: false,
     });
 
-    if (params.targetNodeId) {
-      setNodeExpanded(params.targetNodeId, true);
-    }
+    if (params.targetNodeId) setNodeExpanded(params.targetNodeId, true);
 
     setNodes((prev) =>
       prev
@@ -1085,7 +1086,6 @@ export default function App() {
   function renderModals() {
     return (
       <>
-        {/* Modal Chave API Gemini */}
         <Modal
           visible={apiKeyModalVisible}
           transparent
@@ -1129,7 +1129,6 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* Modal Resumo do Dia */}
         <Modal
           visible={summaryModalVisible}
           transparent
@@ -1538,6 +1537,25 @@ export default function App() {
             setActiveTab('home');
           }}
         />
+      ) : overlayScreen?.kind === 'bookmarks' ? (
+        <BookmarksView
+          theme={theme}
+          onOpenDrawer={() => setDrawerVisible(true)}
+          onBackHome={() => {
+            setOverlayScreen(null);
+            setActiveTab('home');
+          }}
+          onOpenInBrowser={(url, title) =>
+            setBrowserSession({
+              url,
+              title,
+              sourceId: 'bookmarks',
+              sourceName: title,
+              sourceIcon: '🔖',
+              query: title,
+            })
+          }
+        />
       ) : overlayScreen?.kind === 'tracker' ? (
         <MediaTrackerView
           initialTab={overlayScreen.tab}
@@ -1790,14 +1808,11 @@ export default function App() {
           {activeTab === 'home' && (
             <HomeSearchView
               nodes={nodes}
-              coursesCount={courses.length}
               hasApiKey={!!geminiApiKey.trim()}
               theme={theme}
               customSources={customSources}
               savedSearches={savedSearches}
               recentSearches={recentSearches}
-              onOpenCourses={() => setOverlayScreen({ kind: 'courses', courseId: null })}
-              onOpenProductivityHub={() => setOverlayScreen({ kind: 'productivity' })}
               onOpenDailySummary={handleGenerateDailySummary}
               onOpenApiKeyModal={() => {
                 setApiKeyDraft(geminiApiKey);
@@ -1837,7 +1852,7 @@ export default function App() {
                 {renderTree(null, 0)}
               </View>
               <Text style={[styles.tipText, { color: theme.textDim }]}>
-                Abra o menu ☰ no topo para acessar Tempo, Horóscopo, Cotações, Feeds RSS, Minha Rotina, Assistindo e Lendo!
+                Abra o menu ☰ no topo para acessar Marcadores, Tempo, Horóscopo, Cotações, Feeds, Rotina, Cursos e Ferramentas Flow!
               </Text>
             </ScrollView>
           )}
