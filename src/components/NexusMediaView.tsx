@@ -3,6 +3,7 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View 
 import { getAppMeta, setAppMeta } from '../database/db';
 import NexusWatchTracker from './NexusWatchTracker';
 import NexusLiveTV from './NexusLiveTV';
+import NexusUniversalSearch from './NexusUniversalSearch';
 
 type MediaTheme = { bg: string; surface: string; surfaceAlt: string; text: string; textDim: string; border: string; accent: string };
 type Props = { theme: MediaTheme; onBackHome: () => void };
@@ -91,7 +92,8 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
           <Text style={styles.footnote}>Sua biblioteca fica salva localmente no banco do Nexus. Integrações externas serão adicionadas em etapas.</Text>
         </ScrollView>}
 
-        {section === 'search' && <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+        {section === 'search' && <NexusUniversalSearch />}
+        {false && <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
           <Text style={styles.pageTitle}>Busca do Nexus Media</Text><Text style={styles.pageCopy}>Pesquise nos itens que você já adicionou à sua biblioteca. A busca em catálogos externos será conectada nas próximas etapas.</Text>
           <TextInput value={query} onChangeText={setQuery} placeholder="Ex.: Interestelar, Naruto, novela..." placeholderTextColor="#898397" style={styles.input} />
           <View style={styles.filterPill}><Text style={styles.filterText}>● Biblioteca local • {library.length} itens</Text></View>
