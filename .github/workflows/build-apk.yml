@@ -2,7 +2,7 @@ name: Build Nexus APK
 
 on:
   push:
-    branches: [ main, master, integrar-ferramentas-flow ]
+    branches: [ main, master, integrar-ferramentas-flow, nexus-painel-inteligente ]
   workflow_dispatch:
 
 jobs:
