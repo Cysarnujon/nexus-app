@@ -26,6 +26,7 @@ import {
 import { ProductivityToolDef } from '../data/productivityCatalog';
 import MilanoteBoardView from './MilanoteBoardView';
 import MindMapView from './MindMapView';
+import FlowToolsWebView from './FlowToolsWebView';
 
 interface ToolRunnerProps {
   tool: ProductivityToolDef;
@@ -1175,6 +1176,10 @@ export default function ProductivityToolRunner({
         onExportToSpaces={onExportToSpaces}
       />
     );
+  }
+
+  if (tool.kind === 'flow_editor') {
+    return <FlowToolsWebView />;
   }
 
   return (
