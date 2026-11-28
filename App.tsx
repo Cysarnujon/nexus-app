@@ -1840,6 +1840,18 @@ export default function App() {
               onDeleteSavedSearch={handleDeleteSavedSearch}
               onClearRecentSearches={handleClearRecentSearches}
               onOpenNode={openPage}
+              coursesCount={courses.length}
+              lessonsCount={courseLessons.length}
+              completedLessonsCount={courseLessons.filter((lesson) => lesson.isCompleted).length}
+              onNavigateTo={(target) => {
+                if (target === 'spaces' || target === 'graph' || target === 'tags' || target === 'tasks') {
+                  setActiveTab(target);
+                  return;
+                }
+                if (target === 'routine' || target === 'courses' || target === 'productivity' || target === 'bookmarks') {
+                  setOverlayScreen(target === 'courses' ? { kind: 'courses' } : target === 'productivity' ? { kind: 'productivity' } : target === 'routine' ? { kind: 'routine' } : { kind: 'bookmarks' });
+                }
+              }}
             />
           )}
 
