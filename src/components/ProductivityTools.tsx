@@ -1140,10 +1140,12 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
         </TouchableOpacity>
       </View>
 
+      <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled contentContainerStyle={{ gap: 12, paddingBottom: 14, paddingRight: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
       {KANBAN_COLUMNS.map((column, index) => {
         const columnCards = cards.filter((card) => card.status === column.key);
         return (
-          <View key={column.key} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderTopWidth: 4, borderTopColor: column.color, marginBottom: 12 }]}>
+          <View key={column.key} style={[styles.card, { width: 282, minHeight: 230, flexShrink: 0, backgroundColor: theme.surface, borderColor: theme.border, borderTopWidth: 4, borderTopColor: column.color, marginBottom: 0 }]}>
             <View style={styles.rowBetween}>
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{column.title}</Text>
               <Text style={{ color: theme.textDim, fontSize: 12 }}>{columnCards.length}</Text>
@@ -1172,6 +1174,8 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
           </View>
         );
       })}
+        </View>
+      </ScrollView>
       <View style={{ height: 30 }} />
     </ScrollView>
   );
