@@ -163,11 +163,9 @@ export function TasksView({
   });
 
   const toggleRoutineTask = (id: string) => {
-    setRoutineTasks((current) => {
-      const next = current.map((task) => task.id === id ? { ...task, done: !task.done } : task);
-      setAppMeta('routine_daily_tasks', JSON.stringify(next));
-      return next;
-    });
+    const next = routineTasks.map((task) => task.id === id ? { ...task, done: !task.done } : task);
+    setRoutineTasks(next);
+    setAppMeta('routine_daily_tasks', JSON.stringify(next));
   };
 
   const allTasks = useMemo(() => {
