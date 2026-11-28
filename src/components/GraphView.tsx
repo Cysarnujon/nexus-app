@@ -489,7 +489,7 @@ export default function GraphView({ nodes, onOpenNode }: GraphViewProps) {
                 {selectedNode.isFavorite ? '★ ' : ''}
                 {selectedNode.title}
               </Text>
-              <Text style={styles.selectedMeta} numberOfLines={1}>
+              <Text style={styles.selectedMeta} numberOfLines={2}>
                 {selectedStats.linksCount} conexões • {selectedStats.outgoingLinks} links criados • {selectedStats.backlinks} referências recebidas
                 {selectedStats.tags.length > 0
                   ? ` • ${selectedStats.tags.slice(0, 3).join(' ')}`
