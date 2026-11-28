@@ -206,6 +206,7 @@ export default function App() {
   const [snapshots, setSnapshots] = useState<NodeSnapshot[]>([]);
   const [editorRefreshKey, setEditorRefreshKey] = useState(0);
   const [backupModalVisible, setBackupModalVisible] = useState(false);
+  const [settingsDrawerVisible, setSettingsDrawerVisible] = useState(false);
   const [backupJsonInput, setBackupJsonInput] = useState('');
 
   const theme = isDarkMode ? DARK_THEME : LIGHT_THEME;
@@ -1446,6 +1447,60 @@ export default function App() {
         </Modal>
 
         <Modal
+          visible={settingsDrawerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setSettingsDrawerVisible(false)}
+        >
+          <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: '#0009' }}>
+            <TouchableOpacity activeOpacity={1} onPress={() => setSettingsDrawerVisible(false)} style={{ flex: 1 }} />
+            <View style={{ width: '88%', maxWidth: 430, height: '100%', backgroundColor: theme.surface, borderLeftWidth: 1, borderColor: theme.border, paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 24) : 18 }}>
+              <View style={{ paddingHorizontal: 20, paddingBottom: 16, borderBottomWidth: 1, borderColor: theme.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: theme.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 }}>NEXUS • CENTRAL</Text>
+                  <Text style={{ color: theme.text, fontSize: 22, fontWeight: '900', marginTop: 4 }}>Configurações</Text>
+                  <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 3 }}>Gerencie seu aplicativo</Text>
+                </View>
+                <TouchableOpacity onPress={() => setSettingsDrawerVisible(false)} style={{ padding: 10 }}>
+                  <Text style={{ color: theme.text, fontSize: 20 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 36 }}>
+                <Text style={{ color: theme.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 9 }}>GERAL</Text>
+                <TouchableOpacity onPress={() => { setSettingsDrawerVisible(false); setBackupModalVisible(true); }} style={{ padding: 15, borderRadius: 13, backgroundColor: theme.surfaceAlt, marginBottom: 9, borderWidth: 1, borderColor: theme.border }}>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>💾  Backup e restauração</Text>
+                  <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 5 }}>Exportar ou restaurar seus dados do Nexus</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={toggleTheme} style={{ padding: 15, borderRadius: 13, backgroundColor: theme.surfaceAlt, marginBottom: 9, borderWidth: 1, borderColor: theme.border }}>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>🎨  Tema do aplicativo</Text>
+                  <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 5 }}>Tema atual: {isDarkMode ? 'Dark' : 'Claro'} • Toque para alternar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setSettingsDrawerVisible(false); setApiKeyDraft(geminiApiKey); setApiKeyModalVisible(true); }} style={{ padding: 15, borderRadius: 13, backgroundColor: theme.surfaceAlt, marginBottom: 9, borderWidth: 1, borderColor: theme.border }}>
+                  <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>✦  Inteligência artificial</Text>
+                  <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 5 }}>Configurar a chave da API do Gemini</Text>
+                </TouchableOpacity>
+                <Text style={{ color: theme.textDim, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 18, marginBottom: 9 }}>PREFERÊNCIAS</Text>
+                {[
+                  ['✎', 'Editor', 'Preferências de edição e formatação'],
+                  ['▤', 'Organização', 'Preferências de notas, tarefas e projetos'],
+                  ['🔔', 'Notificações', 'Lembretes e avisos do aplicativo'],
+                  ['☁', 'Sincronização', 'Opções futuras de sincronização e nuvem'],
+                  ['▦', 'Armazenamento', 'Espaço usado e gerenciamento de dados'],
+                  ['ⓘ', 'Ajuda e sobre', 'Tutoriais, versão e informações do Nexus'],
+                ].map(([icon, title, description]) => (
+                  <View key={title} style={{ padding: 14, borderRadius: 12, backgroundColor: theme.bg, marginBottom: 8, borderWidth: 1, borderColor: theme.border }}>
+                    <Text style={{ color: theme.text, fontSize: 14, fontWeight: '800' }}>{icon}  {title}</Text>
+                    <Text style={{ color: theme.textDim, fontSize: 11, marginTop: 4 }}>{description}</Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 5 }}>Disponível para configuração em atualização futura</Text>
+                  </View>
+                ))}
+                <Text style={{ color: theme.textMuted, fontSize: 10, textAlign: 'center', marginTop: 18 }}>Nexus • Suas informações permanecem neste dispositivo</Text>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
           visible={backupModalVisible}
           transparent
           animationType="fade"
@@ -1806,8 +1861,8 @@ export default function App() {
               <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]} onPress={toggleTheme}>
                 <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]} onPress={() => setBackupModalVisible(true)}>
-                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>⚙</Text>
+              <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]} onPress={() => setSettingsDrawerVisible(true)} accessibilityLabel="Abrir configurações">
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16 }}>⚙</Text>
               </TouchableOpacity>
               {activeTab === 'spaces' && (
                 <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]} onPress={toggleExpandAll}>
