@@ -12,6 +12,7 @@ export default function NexusUniversalSearch() {
   const [query,setQuery]=useState('');
   const [apiKey,setApiKey]=useState(readKey);
   const [showKey,setShowKey]=useState(false);
+  const [revealKey,setRevealKey]=useState(false);
   const [results,setResults]=useState<Result[]>([]);
   const [loading,setLoading]=useState(false);
   const [searched,setSearched]=useState(false);
@@ -47,7 +48,7 @@ export default function NexusUniversalSearch() {
     <View style={styles.searchRow}><TextInput value={query} onChangeText={setQuery} onSubmitEditing={search} returnKeyType="search" placeholder="Ex.: Interestelar, Naruto, The Last of Us..." placeholderTextColor="#898397" style={styles.searchInput}/><TouchableOpacity onPress={search} disabled={loading} style={styles.searchButton}><Text style={styles.searchButtonText}>⌕</Text></TouchableOpacity></View>
     <View style={styles.config}>
       <TouchableOpacity onPress={()=>setShowKey(v=>!v)} style={styles.configHead}><Text style={styles.configTitle}>⚙ Configurar catálogo TMDB</Text><Text style={styles.configAction}>{showKey?'Fechar':'Configurar'}</Text></TouchableOpacity>
-      {showKey?<><Text style={styles.configCopy}>A busca externa precisa da sua chave pessoal gratuita da API do TMDB. Crie uma conta e solicite uma chave em themoviedb.org. Ela não está embutida no APK; fica salva localmente neste aparelho.</Text><TextInput value={apiKey} onChangeText={setApiKey} placeholder="Cole aqui sua chave API (v3 auth)" placeholderTextColor="#898397" secureTextEntry={!showKey} autoCapitalize="none" style={styles.keyInput}/><TouchableOpacity onPress={saveKey} style={styles.saveButton}><Text style={styles.saveText}>Salvar chave neste aparelho</Text></TouchableOpacity></>:<Text style={styles.configCopy}>{apiKey?'Chave configurada neste aparelho.':'Configure uma chave para ativar as pesquisas externas.'}</Text>}
+      {showKey?<><Text style={styles.configCopy}>A busca externa precisa da sua chave pessoal gratuita da API do TMDB. Crie uma conta e solicite uma chave em themoviedb.org. Ela não está embutida no APK; fica salva localmente neste aparelho.</Text><TextInput value={apiKey} onChangeText={setApiKey} placeholder="Cole aqui sua chave API (v3 auth)" placeholderTextColor="#898397" secureTextEntry={!revealKey} autoCapitalize="none" style={styles.keyInput}/><TouchableOpacity onPress={()=>setRevealKey(v=>!v)} style={styles.saveButton}><Text style={styles.saveText}>{revealKey?"Ocultar chave":"Mostrar chave"}</Text></TouchableOpacity><TouchableOpacity onPress={saveKey} style={styles.saveButton}><Text style={styles.saveText}>Salvar chave neste aparelho</Text></TouchableOpacity></>:<Text style={styles.configCopy}>{apiKey?'Chave configurada neste aparelho.':'Configure uma chave para ativar as pesquisas externas.'}</Text>}
     </View>
     {loading?<View style={styles.loading}><ActivityIndicator color="#A78BFA"/><Text style={styles.copy}>Pesquisando no catálogo…</Text></View>:null}
     {searched&&!loading?<Text style={styles.section}>RESULTADOS • {results.length}</Text>:null}
