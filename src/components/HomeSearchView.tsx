@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { NexusNode } from '../database/db';
+import { getAppMeta, NexusNode } from '../database/db';
 import { EditorTheme, extractPlainTextFromContent, parseContentToBlocks } from '../editor/blocks';
 
 export interface SearchSource {
@@ -182,7 +182,21 @@ export default function HomeSearchView({
         }
       }
     }
-    return { total, done, pending: total - done };
+    let routineTotal = 0;
+    let routineDone = 0;
+    try {
+      const raw = getAppMeta('routine_daily_tasks');
+      const routineTasks = raw ? JSON.parse(raw) as { done?: boolean }[] : [];
+      routineTotal = routineTasks.length;
+      routineDone = routineTasks.filter((task) => !!task.done).length;
+    } catch {
+      // Mantém a contagem das checklists das notas se os dados antigos estiverem inválidos.
+    }
+    return {
+      total: total + routineTotal,
+      done: done + routineDone,
+      pending: (total - done) + (routineTotal - routineDone),
+    };
   }, [nodes]);
 
   const savedTagsList = useMemo(() => {
