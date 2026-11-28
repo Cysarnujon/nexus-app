@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { NexusNode } from '../database/db';
+import { getAppMeta, NexusNode, setAppMeta } from '../database/db';
 import {
   extractPlainTextFromContent,
   parseContentToBlocks,
@@ -133,6 +133,12 @@ interface TasksViewProps {
   onOpenNode: (id: string) => void;
 }
 
+interface RoutineTaskItem {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
 interface GlobalTaskItem {
   nodeId: string;
   nodeTitle: string;
@@ -147,6 +153,22 @@ export function TasksView({
   onOpenNode,
 }: TasksViewProps) {
   const [filter, setFilter] = useState<'pending' | 'done' | 'all'>('pending');
+  const [routineTasks, setRoutineTasks] = useState<RoutineTaskItem[]>(() => {
+    try {
+      const raw = getAppMeta('routine_daily_tasks');
+      return raw ? (JSON.parse(raw) as RoutineTaskItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleRoutineTask = (id: string) => {
+    setRoutineTasks((current) => {
+      const next = current.map((task) => task.id === id ? { ...task, done: !task.done } : task);
+      setAppMeta('routine_daily_tasks', JSON.stringify(next));
+      return next;
+    });
+  };
 
   const allTasks = useMemo(() => {
     const items: GlobalTaskItem[] = [];
@@ -167,19 +189,20 @@ export function TasksView({
     return items;
   }, [nodes]);
 
-  const doneCount = useMemo(
-    () => allTasks.filter((t) => t.checked).length,
-    [allTasks]
-  );
-  const pendingCount = allTasks.length - doneCount;
-  const progressPct =
-    allTasks.length > 0 ? Math.round((doneCount / allTasks.length) * 100) : 0;
+  const doneCount = allTasks.filter((t) => t.checked).length + routineTasks.filter((t) => t.done).length;
+  const totalCount = allTasks.length + routineTasks.length;
+  const pendingCount = totalCount - doneCount;
+  const progressPct = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   const visibleTasks = useMemo(() => {
     if (filter === 'pending') return allTasks.filter((t) => !t.checked);
     if (filter === 'done') return allTasks.filter((t) => t.checked);
     return allTasks;
   }, [allTasks, filter]);
+  const visibleRoutineTasks = routineTasks.filter((task) =>
+    filter === 'all' || (filter === 'done' ? task.done : !task.done)
+  );
+  const hasVisibleTasks = visibleTasks.length + visibleRoutineTasks.length > 0;
 
   return (
     <ScrollView style={styles.scrollArea}>
@@ -188,7 +211,7 @@ export function TasksView({
       <View style={styles.progressCard}>
         <View style={styles.progressHeader}>
           <Text style={styles.progressTitle}>
-            {doneCount} de {allTasks.length} concluídas
+            {doneCount} de {totalCount} concluídas
           </Text>
           <Text style={styles.progressPct}>{progressPct}%</Text>
         </View>
@@ -238,16 +261,16 @@ export function TasksView({
               filter === 'all' && styles.filterBtnTextActive,
             ]}
           >
-            Todas ({allTasks.length})
+            Todas ({totalCount})
           </Text>
         </TouchableOpacity>
       </View>
 
-      {visibleTasks.length === 0 ? (
+      {!hasVisibleTasks ? (
         <View style={styles.emptyBox}>
           <Text style={styles.emptyText}>
-            {allTasks.length === 0
-              ? 'Nenhuma checklist criada ainda. Dentro de qualquer nota, use o bloco Checklist (ou digite "[] ").'
+            {totalCount === 0
+              ? 'Nenhuma tarefa cadastrada. Crie checklists nas notas ou tarefas diárias na área Minha Rotina.'
               : 'Nenhuma tarefa nesta categoria!'}
           </Text>
         </View>
@@ -283,6 +306,23 @@ export function TasksView({
             </View>
           </View>
         ))
+      )}
+
+      {visibleRoutineTasks.length > 0 && (
+        <View style={{ marginTop: 8 }}>
+          <Text style={styles.sectionHeading}>📅 TAREFAS DIÁRIAS DA ROTINA ({routineTasks.length})</Text>
+          {visibleRoutineTasks.map((task) => (
+            <View key={`routine-${task.id}`} style={styles.taskCard}>
+              <TouchableOpacity onPress={() => toggleRoutineTask(task.id)} style={styles.checkboxHit}>
+                <Text style={[styles.checkboxIcon, task.done && styles.checkboxChecked]}>{task.done ? '☑' : '☐'}</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.taskText, task.done && styles.taskTextDone]}>{task.title}</Text>
+                <Text style={styles.taskOrigin}>Minha Rotina · tarefa diária</Text>
+              </View>
+            </View>
+          ))}
+        </View>
       )}
 
       <View style={{ height: 24 }} />
