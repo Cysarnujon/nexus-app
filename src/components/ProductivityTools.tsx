@@ -1069,13 +1069,14 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
   });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [newCardStatus, setNewCardStatus] = useState<KanbanCard['status'] | null>(null);
 
   const saveCards = (next: KanbanCard[]) => {
     setCards(next);
     setAppMeta('prod_kanban_projects', JSON.stringify(next));
   };
 
-  const addCard = () => {
+  const addCard = (status: KanbanCard['status']) => {
     if (!title.trim()) {
       Alert.alert('Falta o título', 'Digite o nome da tarefa para adicionar ao quadro.');
       return;
@@ -1084,11 +1085,12 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
       id: `kanban-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       title: title.trim(),
       description: description.trim(),
-      status: 'todo',
+      status,
       createdAt: Date.now(),
     }, ...cards]);
     setTitle('');
     setDescription('');
+    setNewCardStatus(null);
   };
 
   const moveCard = (card: KanbanCard, direction: -1 | 1) => {
@@ -1115,31 +1117,6 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
         </View>
       </View>
 
-      <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: 14 }]}>
-        <Text style={{ color: theme.text, fontWeight: '800', marginBottom: 8 }}>＋ Novo cartão</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="O que precisa ser feito?"
-          placeholderTextColor={theme.textDim}
-          returnKeyType="done"
-          onSubmitEditing={addCard}
-        />
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, minHeight: 64 }]}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Detalhes ou observações (opcional)"
-          placeholderTextColor={theme.textDim}
-          multiline
-          textAlignVertical="top"
-        />
-        <TouchableOpacity onPress={addCard} style={[styles.primaryBtn, { backgroundColor: theme.accent }]}>
-          <Text style={styles.primaryBtnText}>Adicionar ao Kanban</Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled contentContainerStyle={{ gap: 12, paddingBottom: 14, paddingRight: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
       {KANBAN_COLUMNS.map((column, index) => {
@@ -1150,6 +1127,40 @@ function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
               <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{column.title}</Text>
               <Text style={{ color: theme.textDim, fontSize: 12 }}>{columnCards.length}</Text>
             </View>
+            <TouchableOpacity
+              onPress={() => {
+                setNewCardStatus(newCardStatus === column.key ? null : column.key);
+                setTitle('');
+                setDescription('');
+              }}
+              style={[styles.pillBtn, { marginTop: 10, marginBottom: 2, alignItems: 'center', backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}
+            >
+              <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '800' }}>＋ Novo cartão</Text>
+            </TouchableOpacity>
+            {newCardStatus === column.key && (
+              <View style={{ marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border }}>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="Título do cartão"
+                  placeholderTextColor={theme.textDim}
+                  returnKeyType="done"
+                />
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text, minHeight: 58 }]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Descrição (opcional)"
+                  placeholderTextColor={theme.textDim}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <TouchableOpacity onPress={() => addCard(column.key)} style={[styles.primaryBtn, { backgroundColor: theme.accent }]}>
+                  <Text style={styles.primaryBtnText}>Adicionar em {column.title}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
             {columnCards.length === 0 ? (
               <Text style={{ color: theme.textDim, fontSize: 12, paddingVertical: 14 }}>Nenhum cartão nesta etapa.</Text>
             ) : columnCards.map((card) => (
