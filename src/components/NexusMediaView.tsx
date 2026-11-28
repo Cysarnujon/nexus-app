@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getAppMeta, setAppMeta } from '../database/db';
+import NexusWatchTracker from './NexusWatchTracker';
 
 type MediaTheme = { bg: string; surface: string; surfaceAlt: string; text: string; textDim: string; border: string; accent: string };
 type Props = { theme: MediaTheme; onBackHome: () => void };
@@ -20,7 +21,7 @@ const readLibrary = (): MediaItem[] => {
 };
 
 export default function NexusMediaView({ theme, onBackHome }: Props) {
-  const [section, setSection] = useState<'home' | 'search' | 'addons' | 'library'>('home');
+  const [section, setSection] = useState<'home' | 'search' | 'addons' | 'library' | 'journey'>('home');
   const [query, setQuery] = useState('');
   const [library, setLibrary] = useState<MediaItem[]>(readLibrary);
   const [newTitle, setNewTitle] = useState('');
@@ -84,6 +85,7 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
           <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>SUAS CONEXÕES</Text></View>
           <TouchableOpacity onPress={() => setSection('addons')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🧩</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Central de add-ons Kodi</Text><Text style={styles.connectionSub}>Compatibilidade e gerenciamento de extensões</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
           <TouchableOpacity onPress={() => setSection('library')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🗂️</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Minha biblioteca</Text><Text style={styles.connectionSub}>{library.length} itens salvos neste aparelho</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setSection('journey')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🎯</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Minha Jornada</Text><Text style={styles.connectionSub}>Watchlist, progresso de episódios e avaliações</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
           <Text style={styles.footnote}>Sua biblioteca fica salva localmente no banco do Nexus. Integrações externas serão adicionadas em etapas.</Text>
         </ScrollView>}
 
@@ -100,6 +102,8 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
           <Text style={styles.sectionTitle}>PRÓXIMOS RECURSOS</Text>{['Detectar o Kodi instalado','Consultar add-ons disponíveis','Ativar ou desativar extensões','Verificar atualizações e permissões'].map(x => <View key={x} style={styles.featureRow}><Text style={{ color: '#A78BFA' }}>✓</Text><Text style={styles.featureText}>{x}</Text></View>)}
         </ScrollView>}
 
+        {section === 'journey' && <NexusWatchTracker />}
+
         {section === 'library' && <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
           <Text style={styles.pageTitle}>Minha biblioteca</Text><Text style={styles.pageCopy}>Cadastre e organize mídias pessoais. Os dados ficam salvos no aparelho, mesmo ao fechar o aplicativo.</Text>
           <View style={styles.formCard}>
@@ -114,7 +118,7 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
           {library.length ? library.map(itemCard) : <View style={styles.emptyState}><Text style={{ fontSize: 30 }}>🗂️</Text><Text style={styles.emptyTitle}>Sua biblioteca está vazia</Text><Text style={styles.emptyCopy}>Adicione seu primeiro filme, série, anime ou outro conteúdo.</Text></View>}
         </ScrollView>}
       </View>
-      <View style={styles.bottomNav}>{nav('home', 'Início', '⌂')}{nav('search', 'Buscar', '⌕')}{nav('addons', 'Add-ons', '🧩')}{nav('library', 'Biblioteca', '▤')}</View>
+      <View style={styles.bottomNav}>{nav('home', 'Início', '⌂')}{nav('search', 'Buscar', '⌕')}{nav('addons', 'Add-ons', '🧩')}{nav('library', 'Biblioteca', '▤')}{nav('journey', 'Jornada', '🎯')}</View>
     </View>
   );
 }
