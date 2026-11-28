@@ -67,6 +67,7 @@ import ProductivityHubView from './src/components/ProductivityHubView';
 import InfoHubView, { InfoSubTab } from './src/components/InfoHubView';
 import RoutineView from './src/components/RoutineView';
 import MediaTrackerView, { TrackerTab } from './src/components/MediaTrackerView';
+import NexusMediaView from './src/components/NexusMediaView';
 import BookmarksView from './src/components/BookmarksView';
 import MementoDbView from './src/components/MementoDbView';
 import AppDrawer, { DrawerDestination } from './src/components/AppDrawer';
@@ -97,7 +98,8 @@ type OverlayScreen =
   | { kind: 'info'; tab: InfoSubTab }
   | { kind: 'routine' }
   | { kind: 'bookmarks' }
-  | { kind: 'tracker'; tab: TrackerTab };
+  | { kind: 'tracker'; tab: TrackerTab }
+  | { kind: 'media' };
 
 interface BrowserSession {
   url: string;
@@ -1567,7 +1569,15 @@ export default function App() {
     >
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
-      {overlayScreen?.kind === 'info' ? (
+      {overlayScreen?.kind === 'media' ? (
+        <NexusMediaView
+          theme={theme}
+          onBackHome={() => {
+            setOverlayScreen(null);
+            setActiveTab('home');
+          }}
+        />
+      ) : overlayScreen?.kind === 'info' ? (
         <InfoHubView
           initialTab={overlayScreen.tab}
           theme={theme}
@@ -1858,6 +1868,11 @@ export default function App() {
               </View>
             </View>
             <View style={styles.headerActions}>
+              {activeTab === 'home' && (
+                <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: '#302247' }]} onPress={() => setOverlayScreen({ kind: 'media' })} accessibilityLabel="Abrir Nexus Media">
+                  <Text style={{ color: '#C4B5FD', fontWeight: '900', fontSize: 14 }}>▶</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.surfaceAlt }]} onPress={toggleTheme}>
                 <Text style={{ fontSize: 13 }}>{isDarkMode ? '☀' : '🌙'}</Text>
               </TouchableOpacity>
