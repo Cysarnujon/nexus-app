@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getAppMeta, setAppMeta } from '../database/db';
 import NexusWatchTracker from './NexusWatchTracker';
+import NexusLiveTV from './NexusLiveTV';
 
 type MediaTheme = { bg: string; surface: string; surfaceAlt: string; text: string; textDim: string; border: string; accent: string };
 type Props = { theme: MediaTheme; onBackHome: () => void };
@@ -21,7 +22,7 @@ const readLibrary = (): MediaItem[] => {
 };
 
 export default function NexusMediaView({ theme, onBackHome }: Props) {
-  const [section, setSection] = useState<'home' | 'search' | 'addons' | 'library' | 'journey'>('home');
+  const [section, setSection] = useState<'home' | 'search' | 'addons' | 'library' | 'journey' | 'live'>('home');
   const [query, setQuery] = useState('');
   const [library, setLibrary] = useState<MediaItem[]>(readLibrary);
   const [newTitle, setNewTitle] = useState('');
@@ -81,10 +82,11 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
             <TouchableOpacity onPress={() => setSection('search')} style={styles.searchButton}><Text style={styles.searchButtonText}>⌕  Buscar no Nexus Media</Text></TouchableOpacity>
           </View>
           <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>EXPLORAR</Text><Text style={styles.sectionMeta}>CATEGORIAS</Text></View>
-          <View style={styles.grid}>{categories.map(item => <TouchableOpacity key={item.title} onPress={() => { setQuery(item.title); setSection('search'); }} style={styles.category}><Text style={styles.categoryIcon}>{item.icon}</Text><Text style={styles.categoryTitle}>{item.title}</Text><Text style={styles.categorySub}>{item.subtitle}</Text></TouchableOpacity>)}</View>
+          <View style={styles.grid}>{categories.map(item => <TouchableOpacity key={item.title} onPress={() => { if (item.title === 'TV ao vivo') setSection('live'); else { setQuery(item.title); setSection('search'); } }} style={styles.category}><Text style={styles.categoryIcon}>{item.icon}</Text><Text style={styles.categoryTitle}>{item.title}</Text><Text style={styles.categorySub}>{item.subtitle}</Text></TouchableOpacity>)}</View>
           <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>SUAS CONEXÕES</Text></View>
           <TouchableOpacity onPress={() => setSection('addons')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🧩</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Central de add-ons Kodi</Text><Text style={styles.connectionSub}>Compatibilidade e gerenciamento de extensões</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
           <TouchableOpacity onPress={() => setSection('library')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🗂️</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Minha biblioteca</Text><Text style={styles.connectionSub}>{library.length} itens salvos neste aparelho</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setSection('live')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>📡</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>TV ao Vivo</Text><Text style={styles.connectionSub}>Listas M3U públicas e guia de programação</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
           <TouchableOpacity onPress={() => setSection('journey')} style={styles.connection}><View style={styles.connectionIcon}><Text style={{ fontSize: 22 }}>🎯</Text></View><View style={{ flex: 1 }}><Text style={styles.connectionTitle}>Minha Jornada</Text><Text style={styles.connectionSub}>Watchlist, progresso de episódios e avaliações</Text></View><Text style={styles.chevron}>›</Text></TouchableOpacity>
           <Text style={styles.footnote}>Sua biblioteca fica salva localmente no banco do Nexus. Integrações externas serão adicionadas em etapas.</Text>
         </ScrollView>}
@@ -103,6 +105,7 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
         </ScrollView>}
 
         {section === 'journey' && <NexusWatchTracker />}
+        {section === 'live' && <NexusLiveTV />}
 
         {section === 'library' && <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
           <Text style={styles.pageTitle}>Minha biblioteca</Text><Text style={styles.pageCopy}>Cadastre e organize mídias pessoais. Os dados ficam salvos no aparelho, mesmo ao fechar o aplicativo.</Text>
@@ -118,7 +121,7 @@ export default function NexusMediaView({ theme, onBackHome }: Props) {
           {library.length ? library.map(itemCard) : <View style={styles.emptyState}><Text style={{ fontSize: 30 }}>🗂️</Text><Text style={styles.emptyTitle}>Sua biblioteca está vazia</Text><Text style={styles.emptyCopy}>Adicione seu primeiro filme, série, anime ou outro conteúdo.</Text></View>}
         </ScrollView>}
       </View>
-      <View style={styles.bottomNav}>{nav('home', 'Início', '⌂')}{nav('search', 'Buscar', '⌕')}{nav('addons', 'Add-ons', '🧩')}{nav('library', 'Biblioteca', '▤')}{nav('journey', 'Jornada', '🎯')}</View>
+      <View style={styles.bottomNav}>{nav('home', 'Início', '⌂')}{nav('search', 'Buscar', '⌕')}{nav('addons', 'Add-ons', '🧩')}{nav('library', 'Biblioteca', '▤')}{nav('journey', 'Jornada', '🎯')}{nav('live', 'TV', '📡')}</View>
     </View>
   );
 }
