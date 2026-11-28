@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { NexusNode } from '../database/db';
-import { EditorTheme, extractPlainTextFromContent } from '../editor/blocks';
+import { EditorTheme, extractPlainTextFromContent, parseContentToBlocks } from '../editor/blocks';
 
 export interface SearchSource {
   id: string;
@@ -106,6 +106,10 @@ interface HomeSearchViewProps {
   onDeleteSavedSearch: (id: string) => void;
   onClearRecentSearches: () => void;
   onOpenNode: (id: string) => void;
+  coursesCount: number;
+  lessonsCount: number;
+  completedLessonsCount: number;
+  onNavigateTo: (target: 'spaces' | 'tasks' | 'graph' | 'tags' | 'routine' | 'courses' | 'productivity' | 'bookmarks') => void;
 }
 
 export default function HomeSearchView({
@@ -124,6 +128,10 @@ export default function HomeSearchView({
   onDeleteSavedSearch,
   onClearRecentSearches,
   onOpenNode,
+  coursesCount,
+  lessonsCount,
+  completedLessonsCount,
+  onNavigateTo,
 }: HomeSearchViewProps) {
   const allSources = useMemo(
     () => [...DEFAULT_SOURCES, ...customSources],
@@ -162,6 +170,20 @@ export default function HomeSearchView({
     () => nodes.filter((n) => n.isFavorite),
     [nodes]
   );
+
+  const taskSummary = useMemo(() => {
+    let total = 0;
+    let done = 0;
+    for (const node of nodes) {
+      for (const block of parseContentToBlocks(node.content)) {
+        if (block.type === 'todo') {
+          total += 1;
+          if (block.checked) done += 1;
+        }
+      }
+    }
+    return { total, done, pending: total - done };
+  }, [nodes]);
 
   const savedTagsList = useMemo(() => {
     const set = new Set<string>();
@@ -311,6 +333,46 @@ export default function HomeSearchView({
       style={styles.scrollArea}
       keyboardShouldPersistTaps="handled"
     >
+
+      <View style={[styles.dashboardCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.dashboardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '900' }}>Seu painel</Text>
+            <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 3 }}>Uma visão rápida do que está acontecendo no Nexus</Text>
+          </View>
+          <TouchableOpacity onPress={onOpenDailySummary} style={[styles.dashboardSummaryBtn, { backgroundColor: theme.surfaceAlt }]}>
+            <Text style={{ color: theme.accent, fontSize: 12, fontWeight: '800' }}>✦ Resumo</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.dashboardStatsGrid}>
+          {[
+            { icon: '🧠', label: 'Notas', value: String(nodes.length), target: 'spaces' as const },
+            { icon: '☑', label: 'Pendentes', value: String(taskSummary.pending), target: 'tasks' as const },
+            { icon: '🎓', label: 'Cursos', value: String(coursesCount), target: 'courses' as const },
+            { icon: '▶', label: 'Aulas concluídas', value: `${completedLessonsCount}/${lessonsCount}`, target: 'courses' as const },
+          ].map((item) => (
+            <TouchableOpacity key={item.label} onPress={() => onNavigateTo(item.target)} style={[styles.dashboardStat, { backgroundColor: theme.surfaceAlt }]}>
+              <Text style={{ fontSize: 17 }}>{item.icon}</Text>
+              <Text style={{ color: theme.text, fontSize: 19, fontWeight: '900', marginTop: 5 }}>{item.value}</Text>
+              <Text style={{ color: theme.textDim, fontSize: 10, marginTop: 2 }}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.dashboardQuickActions}>
+          {[
+            { icon: '☑', label: 'Tarefas', target: 'tasks' as const },
+            { icon: '🗓', label: 'Rotina', target: 'routine' as const },
+            { icon: '🕸', label: 'Grafo', target: 'graph' as const },
+            { icon: '🔖', label: 'Marcadores', target: 'bookmarks' as const },
+            { icon: '⚙', label: 'Ferramentas', target: 'productivity' as const },
+          ].map((item) => (
+            <TouchableOpacity key={item.target} onPress={() => onNavigateTo(item.target)} style={[styles.dashboardQuickBtn, { borderColor: theme.border }]}>
+              <Text style={{ fontSize: 16 }}>{item.icon}</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '700' }}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
       <View
         style={[
           styles.searchPill,
@@ -918,6 +980,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 14,
   },
+  dashboardCard: { borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 14 },
+  dashboardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 13 },
+  dashboardSummaryBtn: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  dashboardStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dashboardStat: { width: '48%', flexGrow: 1, borderRadius: 12, padding: 10, minHeight: 83 },
+  dashboardQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
+  dashboardQuickBtn: { flexGrow: 1, minWidth: '18%', alignItems: 'center', gap: 4, paddingVertical: 9, paddingHorizontal: 5, borderWidth: 1, borderRadius: 11 },
   searchPill: {
     flexDirection: 'row',
     alignItems: 'center',
