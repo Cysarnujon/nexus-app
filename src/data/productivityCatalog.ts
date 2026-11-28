@@ -11,7 +11,8 @@ export type ProductivityToolKind =
   | 'mindmap'
   | 'tasks_link'
   | 'spaces_link'
-  | 'framework';
+  | 'framework'
+  | 'flow_editor';
 
 export interface FrameworkSectionDef {
   key: string;
@@ -236,17 +237,11 @@ export const PRODUCTIVITY_CATEGORIES: ProductivityCategoryDef[] = [
       },
       {
         id: 'fluxograma',
-        title: 'Fluxograma / Tartaruga',
+        title: 'Fluxograma',
         icon: '🔀',
         color: '#6366F1',
-        subtitle: 'Entradas, processo e saídas',
-        kind: 'framework',
-        sections: [
-          { key: 'in', title: 'Entradas (Recursos / Insumos)', color: '#3B82F6', hint: 'O que entra no processo...' },
-          { key: 'how', title: 'Como (Métodos e Passos)', color: '#8B5CF6', hint: 'Passo 1 -> Passo 2 -> Passo 3...' },
-          { key: 'who', title: 'Com Quem (Pessoas / Ferramentas)', color: '#F59E0B', hint: 'Equipamentos e apps...' },
-          { key: 'out', title: 'Saídas (Entrega / Indicador)', color: '#10B981', hint: 'Resultado final esperado...' },
-        ],
+        subtitle: 'Editor visual completo de processos',
+        kind: 'flow_editor',
       },
     ],
   },
