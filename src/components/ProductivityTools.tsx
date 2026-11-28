@@ -1042,6 +1042,141 @@ function StatsTool({
   );
 }
 
+// QUADRO KANBAN FUNCIONAL
+type KanbanStatus = 'todo' | 'doing' | 'done';
+interface KanbanCard {
+  id: string;
+  title: string;
+  description: string;
+  status: KanbanStatus;
+  createdAt: number;
+}
+
+const KANBAN_COLUMNS: { key: KanbanStatus; title: string; color: string }[] = [
+  { key: 'todo', title: 'A Fazer', color: '#64748B' },
+  { key: 'doing', title: 'Em Andamento', color: '#3B82F6' },
+  { key: 'done', title: 'Concluído', color: '#10B981' },
+];
+
+function KanbanBoardTool({ theme }: { theme: EditorTheme }) {
+  const [cards, setCards] = useState<KanbanCard[]>(() => {
+    try {
+      const raw = getAppMeta('prod_kanban_projects');
+      return raw ? (JSON.parse(raw) as KanbanCard[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+
+  const saveCards = (next: KanbanCard[]) => {
+    setCards(next);
+    setAppMeta('prod_kanban_projects', JSON.stringify(next));
+  };
+
+  const addCard = () => {
+    if (!title.trim()) {
+      Alert.alert('Falta o título', 'Digite o nome da tarefa para adicionar ao quadro.');
+      return;
+    }
+    saveCards([{
+      id: `kanban-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: title.trim(),
+      description: description.trim(),
+      status: 'todo',
+      createdAt: Date.now(),
+    }, ...cards]);
+    setTitle('');
+    setDescription('');
+  };
+
+  const moveCard = (card: KanbanCard, direction: -1 | 1) => {
+    const current = KANBAN_COLUMNS.findIndex((column) => column.key === card.status);
+    const nextIndex = Math.max(0, Math.min(KANBAN_COLUMNS.length - 1, current + direction));
+    if (nextIndex === current) return;
+    saveCards(cards.map((item) =>
+      item.id === card.id ? { ...item, status: KANBAN_COLUMNS[nextIndex].key } : item
+    ));
+  };
+
+  const completed = cards.filter((card) => card.status === 'done').length;
+  const progress = cards.length ? Math.round((completed / cards.length) * 100) : 0;
+
+  return (
+    <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 14 }} keyboardShouldPersistTaps="handled">
+      <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: 12 }]}>
+        <Text style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>📌 Meu quadro de projetos</Text>
+        <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 4 }}>
+          {cards.length} cartões • {completed} concluídos • {progress}% finalizado
+        </Text>
+        <View style={{ height: 7, borderRadius: 5, backgroundColor: theme.bg, overflow: 'hidden', marginTop: 10 }}>
+          <View style={{ width: `${progress}%`, height: 7, borderRadius: 5, backgroundColor: '#10B981' }} />
+        </View>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, marginBottom: 14 }]}>
+        <Text style={{ color: theme.text, fontWeight: '800', marginBottom: 8 }}>＋ Novo cartão</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text }]}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="O que precisa ser feito?"
+          placeholderTextColor={theme.textDim}
+          returnKeyType="done"
+          onSubmitEditing={addCard}
+        />
+        <TextInput
+          style={[styles.input, { backgroundColor: theme.bg, borderColor: theme.border, color: theme.text, minHeight: 64 }]}
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Detalhes ou observações (opcional)"
+          placeholderTextColor={theme.textDim}
+          multiline
+          textAlignVertical="top"
+        />
+        <TouchableOpacity onPress={addCard} style={[styles.primaryBtn, { backgroundColor: theme.accent }]}>
+          <Text style={styles.primaryBtnText}>Adicionar ao Kanban</Text>
+        </TouchableOpacity>
+      </View>
+
+      {KANBAN_COLUMNS.map((column, index) => {
+        const columnCards = cards.filter((card) => card.status === column.key);
+        return (
+          <View key={column.key} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderTopWidth: 4, borderTopColor: column.color, marginBottom: 12 }]}>
+            <View style={styles.rowBetween}>
+              <Text style={{ color: theme.text, fontSize: 15, fontWeight: '800' }}>{column.title}</Text>
+              <Text style={{ color: theme.textDim, fontSize: 12 }}>{columnCards.length}</Text>
+            </View>
+            {columnCards.length === 0 ? (
+              <Text style={{ color: theme.textDim, fontSize: 12, paddingVertical: 14 }}>Nenhum cartão nesta etapa.</Text>
+            ) : columnCards.map((card) => (
+              <View key={card.id} style={{ backgroundColor: theme.bg, borderColor: theme.border, borderWidth: 1, borderRadius: 12, padding: 11, marginTop: 9 }}>
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>{card.title}</Text>
+                {!!card.description && <Text style={{ color: theme.textDim, fontSize: 12, marginTop: 5 }}>{card.description}</Text>}
+                <View style={[styles.rowBetween, { marginTop: 10, gap: 6 }]}>
+                  <View style={styles.rowGap}>
+                    <TouchableOpacity disabled={index === 0} onPress={() => moveCard(card, -1)} style={[styles.pillBtn, { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.surface, borderColor: theme.border, opacity: index === 0 ? 0.35 : 1 }]}>
+                      <Text style={{ color: theme.text, fontSize: 12 }}>←</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity disabled={index === KANBAN_COLUMNS.length - 1} onPress={() => moveCard(card, 1)} style={[styles.pillBtn, { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: theme.surface, borderColor: theme.border, opacity: index === KANBAN_COLUMNS.length - 1 ? 0.35 : 1 }]}>
+                      <Text style={{ color: theme.text, fontSize: 12 }}>→</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={() => Alert.alert('Excluir cartão?', card.title, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: () => saveCards(cards.filter((item) => item.id !== card.id)) }])}>
+                    <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700' }}>Excluir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+      <View style={{ height: 30 }} />
+    </ScrollView>
+  );
+}
+
 // 9. ESTÚDIO DE FRAMEWORKS
 function FrameworkStudioTool({
   tool,
@@ -1176,6 +1311,10 @@ export default function ProductivityToolRunner({
         onExportToSpaces={onExportToSpaces}
       />
     );
+  }
+
+  if (tool.id === 'kanban_proj') {
+    return <KanbanBoardTool theme={theme} />;
   }
 
   if (tool.kind === 'flow_editor') {
