@@ -192,10 +192,29 @@ export default function HomeSearchView({
     } catch {
       // Mantém a contagem das checklists das notas se os dados antigos estiverem inválidos.
     }
+    let habitsTotal = 0;
+    let habitsDone = 0;
+    let agendaToday = 0;
+    try {
+      const today = new Date();
+      const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      const habitsRaw = getAppMeta('prod_habits');
+      const habits = habitsRaw ? JSON.parse(habitsRaw) as { lastCheckedDate?: string }[] : [];
+      habitsTotal = habits.length;
+      habitsDone = habits.filter((habit) => habit.lastCheckedDate === todayIso).length;
+      const agendaRaw = getAppMeta('routine_month_events');
+      const agenda = agendaRaw ? JSON.parse(agendaRaw) as { dateIso?: string }[] : [];
+      agendaToday = agenda.filter((event) => event.dateIso === todayIso).length;
+    } catch {
+      // Dados de rotina antigos não impedem a exibição do painel.
+    }
     return {
       total: total + routineTotal,
       done: done + routineDone,
       pending: (total - done) + (routineTotal - routineDone),
+      habitsTotal,
+      habitsDone,
+      agendaToday,
     };
   }, [nodes]);
 
@@ -364,6 +383,8 @@ export default function HomeSearchView({
             { icon: '☑', label: 'Pendentes', value: String(taskSummary.pending), target: 'tasks' as const },
             { icon: '🎓', label: 'Cursos', value: String(coursesCount), target: 'courses' as const },
             { icon: '▶', label: 'Aulas concluídas', value: `${completedLessonsCount}/${lessonsCount}`, target: 'courses' as const },
+            { icon: '🔥', label: 'Hábitos hoje', value: `${taskSummary.habitsDone}/${taskSummary.habitsTotal}`, target: 'routine' as const },
+            { icon: '🗓', label: 'Eventos hoje', value: String(taskSummary.agendaToday), target: 'routine' as const },
           ].map((item) => (
             <TouchableOpacity key={item.label} onPress={() => onNavigateTo(item.target)} style={[styles.dashboardStat, { backgroundColor: theme.surfaceAlt }]}>
               <Text style={{ fontSize: 17 }}>{item.icon}</Text>
