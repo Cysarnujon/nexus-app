@@ -268,12 +268,20 @@ export default function GraphView({ nodes, onOpenNode }: GraphViewProps) {
   }, [edges, selectedId]);
 
   const selectedStats = useMemo(() => {
-    if (!selectedNode) return { linksCount: 0, tags: [] as string[] };
+    if (!selectedNode) return { linksCount: 0, outgoingLinks: 0, backlinks: 0, tags: [] as string[] };
     const linksCount = edges.filter(
       (e) => e.from === selectedNode.id || e.to === selectedNode.id
     ).length;
+    const outgoingLinks = edges.filter(
+      (e) => e.kind === 'link' && e.from === selectedNode.id
+    ).length;
+    const backlinks = edges.filter(
+      (e) => e.kind === 'link' && e.to === selectedNode.id
+    ).length;
     return {
       linksCount,
+      outgoingLinks,
+      backlinks,
       tags: extractTagList(selectedNode.content),
     };
   }, [selectedNode, edges]);
@@ -482,7 +490,7 @@ export default function GraphView({ nodes, onOpenNode }: GraphViewProps) {
                 {selectedNode.title}
               </Text>
               <Text style={styles.selectedMeta} numberOfLines={1}>
-                {selectedStats.linksCount} conexões
+                {selectedStats.linksCount} conexões • {selectedStats.outgoingLinks} links criados • {selectedStats.backlinks} referências recebidas
                 {selectedStats.tags.length > 0
                   ? ` • ${selectedStats.tags.slice(0, 3).join(' ')}`
                   : ''}
