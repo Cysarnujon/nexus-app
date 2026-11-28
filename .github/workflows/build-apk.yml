@@ -2,7 +2,7 @@ name: Build Nexus APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, integrar-ferramentas-flow ]
   workflow_dispatch:
 
 jobs:
